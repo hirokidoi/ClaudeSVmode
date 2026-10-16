@@ -6,6 +6,7 @@ Workflow スクリプトは import できないため、以下ヘルパは各 wf
 ## Prelude
 
 ```javascript
+// >>> sv-prelude:core
 // ============================================================================
 // SV workflow prelude
 // ============================================================================
@@ -23,6 +24,8 @@ function parseSvArgs(raw) {
 
 const svArgs = parseSvArgs(args)
 
+const KIT_DIR = '~/.claude'
+
 const CHECKPOINT_NAMES = ['investigated', 'ui_prototyped', 'designed', 'implemented']
 
 const COMMON_ARGS_SCHEMA = {
@@ -30,6 +33,7 @@ const COMMON_ARGS_SCHEMA = {
   run_id: { type: 'string', required: true },
   project_memory_path: { type: 'string', required: false },
   project_root: { type: 'string', required: false },
+  stacks: { type: 'array', required: false, items: { type: 'string' } },
   checkpoint_declarations: { type: 'array', required: false, items: { type: 'enum', values: CHECKPOINT_NAMES } },
   complexity_profile: { type: 'enum', values: ['light', 'standard', 'deep'], required: false },
   model_overrides: { type: 'object', required: false },
@@ -93,6 +97,12 @@ function validateArgs(schema) {
     checkOne(`args.wf_specific.${key}`, wfSpecificVal[key], spec)
   }
   if (typeof svArgs.run_id === 'string') errors.push(...fileNameErrors('args.run_id', svArgs.run_id))
+  if (Array.isArray(svArgs.stacks)) {
+    const names = svArgs.stacks.filter(n => typeof n === 'string')
+    names.forEach(n => errors.push(...fileNameErrors('args.stacks', n)))
+    const dups = names.filter((n, i) => names.indexOf(n) !== i)
+    if (dups.length > 0) errors.push(`args.stacks に重複: ${[...new Set(dups)].join(', ')}`)
+  }
   const overrides = svArgs.model_overrides
   if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
     const roles = Object.keys(ROLE_MODEL_DEFAULTS)
@@ -146,6 +156,32 @@ function runDir(wfName) {
   return `${svArgs.tmp_base_dir}/wf-${wfName}/${svArgs.run_id}`
 }
 
+function stackPackBlock(reader) {
+  const stacks = svArgs.stacks || []
+  if (stacks.length === 0) return ''
+  return `
+# スタックパック (必読)
+このプロジェクトの技術スタック: ${stacks.join(', ')}
+
+ロール定義を読んだあと、スタックごとに次を行ってください:
+1. ${KIT_DIR}/stacks/<スタック名>/index.md を Read する
+2. index.md の「読むファイル」の表のうち、読み手が ${reader} の行のファイルを、index.md と同じディレクトリから Read する。条件が付いた行は、条件の目印を対象のプロジェクトで確かめ、当てはまるときだけ読む
+
+パックはロール定義を補う知識です。ロール定義や本プロンプトの指定と食い違うときは、そちらに従ってください。
+index.md が存在しないスタックは読まずに続け、成果物に「スタックパック未配置: <スタック名>」と書いてください。
+`.trim()
+}
+
+// role はロールファイル名 (拡張子なし)
+function roleSection(role, note) {
+  const head = `
+# ロール定義 (必読)
+以下ファイルを Read で全文読み、指示を全て守ってください。出力形式は本プロンプトの指定を正とします:
+- ${KIT_DIR}/roles/${role}.md
+`.trim()
+  return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
+}
+// <<< sv-prelude:core
 ```
 
 ## レビュー観点カタログ
@@ -153,6 +189,7 @@ function runDir(wfName) {
 sv-design / sv-prototype-ui / sv-review-plan / sv-review-changes / sv-comprehensive-review が使う。観点の深掘りは reviewer.md の「レビューの観点」を読ませる前提で、定義は 1 行に留める。
 
 ```javascript
+// >>> sv-prelude:review-checks
 // ============================================================================
 // Review check catalog — copied into review wfs
 // ============================================================================
@@ -199,6 +236,7 @@ const FINDINGS_PLACEMENT_RULE = `
 - additional_findings: suggestion の指摘 (location / detail)
 `.trim()
 // ============================================================================
+// <<< sv-prelude:review-checks
 ```
 
 ## コード diff レビュー用ヘルパ
@@ -206,6 +244,7 @@ const FINDINGS_PLACEMENT_RULE = `
 sv-review-changes / sv-comprehensive-review は、レビュー観点カタログの後に以下もコピーする。
 
 ```javascript
+// >>> sv-prelude:diff-review-helpers
 // ============================================================================
 // Code diff review helpers — copied into sv-review-changes / sv-comprehensive-review
 // ============================================================================
@@ -242,6 +281,7 @@ ${gitSteps}
 `.trim()
 }
 // ============================================================================
+// <<< sv-prelude:diff-review-helpers
 ```
 
 ## コード diff レビュー用プロンプト
@@ -249,11 +289,10 @@ ${gitSteps}
 sv-review-changes が使う。レビュー観点カタログとコード diff レビュー用ヘルパの後にコピーする。
 
 ```javascript
+// >>> sv-prelude:diff-review-prompt
 function reviewerPromptCore({ project_memory_path, target_description, artifact_path, output_path, change_scope, selfcheck_path }) {
   return `
-# ロール定義 (必読)
-以下ファイルを Read で全文読み、指示を全て守ってください。出力形式は本プロンプトの指定を正とします:
-- ~/.claude/roles/reviewer.md
+${roleSection('reviewer')}
 
 ${policyReferenceBlock(project_memory_path)}
 
@@ -307,6 +346,7 @@ ${SEVERITY_RULE}
 ${FINDINGS_PLACEMENT_RULE}
 `.trim()
 }
+// <<< sv-prelude:diff-review-prompt
 ```
 
 ## レビュー系 wf 用ヘルパ (セルフチェック確認)
@@ -314,6 +354,7 @@ ${FINDINGS_PLACEMENT_RULE}
 sv-review-changes / sv-review-plan / sv-comprehensive-review は、Prelude の後に以下もコピーする。
 
 ```javascript
+// >>> sv-prelude:selfcheck-gate
 // ============================================================================
 // Self-check gate — copied into review wfs
 // ============================================================================
@@ -376,6 +417,7 @@ performed と、判定理由 (1〜2 文) を返す
   return null
 }
 // ============================================================================
+// <<< sv-prelude:selfcheck-gate
 ```
 
 ## 使用方法
@@ -388,7 +430,17 @@ performed と、判定理由 (1〜2 文) を返す
    - 「レビュー系 wf 用ヘルパ (セルフチェック確認)」: sv-review-changes / sv-review-plan / sv-comprehensive-review
 3. wf 固有ロジックを続けて記述
 
-コピーは正本と完全一致させる (見出しコメントも含む)。正本を直したら、すべてのコピー先に同じ修正を入れる。
+各ブロックの最初の行は `// >>> sv-prelude:<名前>`、最後の行は `// <<< sv-prelude:<名前>` の目印コメントで、コピーにもそのまま入れる。どの wf がどのブロックを持つかは次の表のとおり。
+
+| wf | core | review-checks | diff-review-helpers | diff-review-prompt | selfcheck-gate |
+|---|---|---|---|---|---|
+| sv-investigate / sv-explore-approach / sv-implement | ○ | | | | |
+| sv-prototype-ui / sv-design | ○ | ○ | | | |
+| sv-review-plan | ○ | ○ | | | ○ |
+| sv-comprehensive-review | ○ | ○ | ○ | | ○ |
+| sv-review-changes | ○ | ○ | ○ | ○ | ○ |
+
+コピーは目印を含めて正本と完全一致させる。正本を直したら、すべてのコピー先に同じ修正を入れ、`bash workflows/check-prelude.sh` が 0 で終わることを確かめる。
 
 ## 制約に関する注意
 

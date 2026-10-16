@@ -29,6 +29,7 @@ const _WF_ARGS_SCHEMA = {
   },
 }
 
+// >>> sv-prelude:core
 // ============================================================================
 // SV workflow prelude
 // ============================================================================
@@ -46,6 +47,8 @@ function parseSvArgs(raw) {
 
 const svArgs = parseSvArgs(args)
 
+const KIT_DIR = '~/.claude'
+
 const CHECKPOINT_NAMES = ['investigated', 'ui_prototyped', 'designed', 'implemented']
 
 const COMMON_ARGS_SCHEMA = {
@@ -53,6 +56,7 @@ const COMMON_ARGS_SCHEMA = {
   run_id: { type: 'string', required: true },
   project_memory_path: { type: 'string', required: false },
   project_root: { type: 'string', required: false },
+  stacks: { type: 'array', required: false, items: { type: 'string' } },
   checkpoint_declarations: { type: 'array', required: false, items: { type: 'enum', values: CHECKPOINT_NAMES } },
   complexity_profile: { type: 'enum', values: ['light', 'standard', 'deep'], required: false },
   model_overrides: { type: 'object', required: false },
@@ -116,6 +120,12 @@ function validateArgs(schema) {
     checkOne(`args.wf_specific.${key}`, wfSpecificVal[key], spec)
   }
   if (typeof svArgs.run_id === 'string') errors.push(...fileNameErrors('args.run_id', svArgs.run_id))
+  if (Array.isArray(svArgs.stacks)) {
+    const names = svArgs.stacks.filter(n => typeof n === 'string')
+    names.forEach(n => errors.push(...fileNameErrors('args.stacks', n)))
+    const dups = names.filter((n, i) => names.indexOf(n) !== i)
+    if (dups.length > 0) errors.push(`args.stacks に重複: ${[...new Set(dups)].join(', ')}`)
+  }
   const overrides = svArgs.model_overrides
   if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
     const roles = Object.keys(ROLE_MODEL_DEFAULTS)
@@ -169,10 +179,38 @@ function runDir(wfName) {
   return `${svArgs.tmp_base_dir}/wf-${wfName}/${svArgs.run_id}`
 }
 
+function stackPackBlock(reader) {
+  const stacks = svArgs.stacks || []
+  if (stacks.length === 0) return ''
+  return `
+# スタックパック (必読)
+このプロジェクトの技術スタック: ${stacks.join(', ')}
+
+ロール定義を読んだあと、スタックごとに次を行ってください:
+1. ${KIT_DIR}/stacks/<スタック名>/index.md を Read する
+2. index.md の「読むファイル」の表のうち、読み手が ${reader} の行のファイルを、index.md と同じディレクトリから Read する。条件が付いた行は、条件の目印を対象のプロジェクトで確かめ、当てはまるときだけ読む
+
+パックはロール定義を補う知識です。ロール定義や本プロンプトの指定と食い違うときは、そちらに従ってください。
+index.md が存在しないスタックは読まずに続け、成果物に「スタックパック未配置: <スタック名>」と書いてください。
+`.trim()
+}
+
+// role はロールファイル名 (拡張子なし)
+function roleSection(role, note) {
+  const head = `
+# ロール定義 (必読)
+以下ファイルを Read で全文読み、指示を全て守ってください。出力形式は本プロンプトの指定を正とします:
+- ${KIT_DIR}/roles/${role}.md
+`.trim()
+  return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
+}
+// <<< sv-prelude:core
+
 const MAX_REVISION_LOOP = 3
 // 設計値。revision_required がこの件数以上のとき revision_count_high を立てる
 const REVISION_COUNT_HIGH_THRESHOLD = 5
 
+// >>> sv-prelude:review-checks
 // ============================================================================
 // Review check catalog — copied into review wfs
 // ============================================================================
@@ -219,6 +257,7 @@ const FINDINGS_PLACEMENT_RULE = `
 - additional_findings: suggestion の指摘 (location / detail)
 `.trim()
 // ============================================================================
+// <<< sv-prelude:review-checks
 
 // ============================================================================
 // Schemas (StructuredOutput enforcement)
@@ -299,8 +338,7 @@ async function designerAgent(round, feedback, previousDesignPath) {
     const incrementalPrompt = `
 あなたは設計担当エージェントです (round ${round}: レビュー指摘の増分修正)。
 
-# ロール定義 (必読)
-- ~/.claude/roles/designer.md
+${roleSection('designer')}
 
 # タスク
 round ${round - 1} の設計案に対するレビュー指摘 (revision_required) を、全文書き直しではなく差分修正で反映します。
@@ -351,8 +389,7 @@ schema フィールド:
   const prompt = `
 あなたは設計担当エージェントです。
 
-# ロール定義 (必読)
-- ~/.claude/roles/designer.md
+${roleSection('designer')}
 
 # 要件
 ${requirements}
@@ -454,8 +491,7 @@ ${reviewChecksBlock(Object.keys(REVIEW_CHECKS).filter(k => k !== 'progress'))}
   const prompt = round === 1 ? `
 あなたは設計レビュー担当エージェントです。
 
-# ロール定義 (必読)
-- ~/.claude/roles/reviewer.md
+${roleSection('reviewer')}
 
 ${policyReferenceBlock(svArgs.project_memory_path)}
 
@@ -521,8 +557,7 @@ ${FINDINGS_PLACEMENT_RULE}
 `.trim() : `
 あなたは設計レビュー担当エージェントです (round ${round} の focused 再レビュー)。
 
-# ロール定義 (必読)
-- ~/.claude/roles/reviewer.md
+${roleSection('reviewer')}
 
 ${policyReferenceBlock(svArgs.project_memory_path)}
 

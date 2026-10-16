@@ -2,7 +2,7 @@
 
 `sv-mode.md` の内容を前提とする。個別 wf 設計 (implement.md 等) はこの共通パターンに準拠する。
 
-配置先: `~/.claude/workflows/` (ユーザグローバル)
+配置先: `~/.claude/workflows/` (ユーザグローバル)。ロール定義は `~/.claude/roles/`、スタックパックは `~/.claude/stacks/`
 
 ---
 
@@ -104,7 +104,7 @@
 
 レビュー系エージェントのプロンプトの正本は各 wf の実装側に置く (コード diff レビューは `_prelude.js.md` の「コード diff レビュー用プロンプト」、計画レビュー・総合レビューは各 wf のスクリプト)。出力形式 (判定 JSON・md 構成・重大度の語彙・チェック観点の名前) は役割定義でなく wf のプロンプトと schema を正とする。どのレビュー系プロンプトも以下を含める:
 
-- ロール定義 `~/.claude/roles/reviewer.md` を全文読ませる (振る舞いの原則。出力形式はプロンプトの指定に従わせる)
+- ロール定義とスタックパックは `roleSection('reviewer')` で読ませる (振る舞いの原則。出力形式はプロンプトの指定に従わせる)
 - `policyReferenceBlock` で、導入先の CLAUDE.md・プロジェクト規約と、`project_memory_path` (任意) 内の規約・memory 類を確認させる
 - 早期打ち切りの手段 (`upstream_precondition_failed`) を持たせる。合否を扱わない審査・網羅性チェックは持たない
 - 共通語彙と観点カタログを、その wf に意味を持つ範囲で指定する
@@ -167,14 +167,12 @@
 
 ## 6. 制作系エージェント起動テンプレ
 
-調査担当・設計担当・実装担当も同様にロールファイルを組み込むテンプレを持つ。
+調査担当・設計担当・実装担当・テスト担当も同様に、ロールファイルを読ませる節を持つ。節は Prelude の `roleSection(role, note)` が生成する (ロール定義の節と、`stacks` が指定されたときだけ続くスタックパックの節)。commit 担当とセルフチェック確認はスタックの知識を判断に使わないので、ロール節を持たない。
 
 ```
 あなたは{{role_label}}エージェントです。以下を全て遵守してください。
 
-# ロール定義
-以下を全文読み、指示を全て守ること:
-- ~/.claude/roles/{{role_file}}.md
+{{roleSection(role_file)}}
 
 # タスク
 {{task_description}}
@@ -195,8 +193,8 @@
 ```
 
 **プレースホルダー:**
-- `{{role_label}}` — 「調査担当」「設計担当」「実装担当」
-- `{{role_file}}` — `investigator` / `designer` / `implementer`
+- `{{role_label}}` — 「調査担当」「設計担当」「実装担当」「テスト担当」
+- `{{role_file}}` — `investigator` / `designer` / `implementer` / `verifier` (モデルの役割キーとは別の名前空間)
 - `{{task_description}}` — タスク詳細
 - `{{input_summary_or_paths}}` — 入力の要約または入力ファイルのパス
 - `{{output_path}}` — 成果物保存先
@@ -293,6 +291,7 @@ export const meta = {
 {
   "project_root": "実行中プロジェクトのルートパス",
   "project_memory_path": "プロジェクトの規約・memory 類のディレクトリ (任意)",
+  "stacks": [ "rails" ],
   "tmp_base_dir": "wf 実行結果の基準ディレクトリ (SV が確定)",
   "run_id": "SV が採番した run-id (§12 参照)",
   "checkpoint_declarations": [ "designed", "implemented" ],
@@ -309,6 +308,7 @@ export const meta = {
 - `run_id` は必須 (渡し忘れるとエージェント起動前に `args 構造不足` で返る)
 - `project_memory_path` は任意。ディレクトリがあるときだけ渡し、省略時は policy 観点を CLAUDE.md・プロジェクト規約だけで判定する
 - `project_root` は任意。レビュー系 wf のセルフチェック確認担当と、コード diff を見るレビュー担当 (sv-review-changes / sv-comprehensive-review) に、git コマンドの実行場所として渡す (省略時は作業ディレクトリ)
+- `stacks` — 任意。技術スタック名 (`~/.claude/stacks/<名前>/` のディレクトリ名) の配列。要素ごとのファイル名検査と重複の検査だけを行い、実在は確かめない (確かめるには担当を起動するしかなく、毎回のコストに見合わないため)。省略時と空配列は指定なしと同じで、スタック節は出ない。指定があると `roleSection` がパックを読ませる。`index.md` が無い名前は、担当が成果物に「スタックパック未配置」と書いて続ける
 - `checkpoint_declarations` — このリストに含まれるフェーズ完了時、wf は `status: "checkpoint_stop"` で返す。受け付ける名前は `investigated` (sv-investigate) / `ui_prototyped` (sv-prototype-ui) / `designed` (sv-design) / `implemented` (sv-implement) の 4 つで、Prelude の `CHECKPOINT_NAMES` で検査する。表に無い名前は `args 構造不足`
 - `complexity_profile` — 案件全体のモデル方針 (§13 参照)。省略時は `"standard"`
 - `model_overrides` — 役割別モデル上書き (§13 参照)。省略時は空
@@ -530,9 +530,7 @@ if (succeeded.length < tasks.length / 2) {
 ```
 あなたは調査担当エージェントです。
 
-# ロール定義 (必読)
-以下のファイルを Read で全文読み、その指示を全て守ってください:
-- ~/.claude/roles/investigator.md
+{{roleSection('investigator')}}
 
 # タスク
 {{area.name}} 領域を調査してください。
@@ -716,6 +714,16 @@ wf は 8 個で日常運用をカバーする粒度。案件次第で新規追�
 - **プロファイルを wf 内部で自動判定** — 案件複雑度は対話で決める方が実態に合う
 - **wf 内部で複雑度を都度変更** — Workflow ツール仕様上、実行中の変更は不可。チェックポイント停止と組み合わせて SV が次 wf を別プロファイルで起動する形で対応
 
+### 18.10. スタックパック
+
+- ロール定義と分ける: ロール定義はスタックに依らない進め方、パックは技術スタック固有の知識。パックは `stacks` で指定したときだけ読まれ、指定しなければロール定義だけで進む
+- `stacks` は enum にせず文字列で受ける: enum にすると、スタックを足すたびに Prelude の正本と全 wf の複製を直すことになる。パックのディレクトリを置くだけで足せるようにする
+- `index.md` を入口にする: 担当は自分に当たる行のファイルだけを読む。条件付きの知識を全担当が毎回全文読む形を避ける
+- パックはロール節の生成関数 (`roleSection`) の中で読ませる: 各ロール節に同じ文を複製せず、書式の揺れも 1 つにそろう
+- `test_commands` の要素を文字列かオブジェクトにする: 単純な指定はそのまま書け、種別 (build / test / launch) と実行場所が要るときだけオブジェクトで書く。別のキーに置き換えると、単純な指定まで冗長になる
+- テスト担当専用のロール定義 (`verifier.md`) を持つ: スタックに依らない検証の規律を置く場所と、パックを届ける経路になる
+- Prelude の正本と複製の一致は、目印のコメントの間を比べる確認専用のスクリプトで確かめる: 複製の書き換えは Edit で行い、スクリプトは検査だけにして差分の出どころを追えるようにする
+
 ---
 
 ## 19. argsSchema と実行時バリデーション
@@ -759,59 +767,12 @@ export const meta = {
 
 ### 19.3. バリデーション実装 (prelude)
 
-```javascript
-const CHECKPOINT_NAMES = ['investigated', 'ui_prototyped', 'designed', 'implemented']
+正本は `_prelude.js.md` の Prelude ブロック (コードの抜粋は正本とずれる元になるため、ここには置かない)。`validateArgs` は次を検査する。
 
-const COMMON_ARGS_SCHEMA = {
-  tmp_base_dir: { type: 'string', required: true },
-  run_id: { type: 'string', required: true },
-  project_memory_path: { type: 'string', required: false },
-  project_root: { type: 'string', required: false },
-  checkpoint_declarations: { type: 'array', required: false, items: { type: 'enum', values: CHECKPOINT_NAMES } },
-  complexity_profile: { type: 'enum', values: ['light', 'standard', 'deep'], required: false },
-  model_overrides: { type: 'object', required: false },
-  wf_specific: { type: 'object', required: true },
-}
-
-const TYPE_CHECKS = {
-  string: v => typeof v === 'string',
-  number: v => typeof v === 'number',
-  boolean: v => typeof v === 'boolean',
-  array: v => Array.isArray(v),
-  object: v => typeof v === 'object' && !Array.isArray(v),
-}
-
-function validateArgs(schema) {
-  const errors = []
-  const checkOne = (path, val, spec) => {
-    if (spec.required && (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0))) errors.push(`${path} が不足 (required)`)
-    if (val === undefined || val === null) return
-    if (spec.type === 'enum') {
-      if (!spec.values.includes(val)) errors.push(`${path}=${JSON.stringify(val)} は許容値 ${spec.values.join('|')} 外`)
-      return
-    }
-    if (TYPE_CHECKS[spec.type] && !TYPE_CHECKS[spec.type](val)) {
-      errors.push(`${path} の型が ${spec.type} ではない`)
-      return
-    }
-    for (const [key, sub] of Object.entries(spec.properties || {})) {
-      checkOne(`${path}.${key}`, val[key], sub)
-    }
-    if (spec.items) val.forEach((el, i) => checkOne(`${path}[${i}]`, el, { ...spec.items, required: true }))
-  }
-  for (const [key, spec] of Object.entries(COMMON_ARGS_SCHEMA)) {
-    checkOne(`args.${key}`, svArgs[key], spec)
-  }
-  const wfSpecificSchema = (schema && schema.wf_specific) || {}
-  const wfSpecificVal = svArgs.wf_specific || {}
-  for (const [key, spec] of Object.entries(wfSpecificSchema)) {
-    checkOne(`args.wf_specific.${key}`, wfSpecificVal[key], spec)
-  }
-  return errors
-}
-```
-
-実際の Prelude の `validateArgs` は、上記に加えて `run_id` のファイル名検査と `model_overrides` の未知の役割キーの検査を行う (正本は `_prelude.js.md`)。
+- 共通引数のスキーマ (`COMMON_ARGS_SCHEMA`) と wf 固有のスキーマ (`_WF_ARGS_SCHEMA`) に対する、型・必須・enum・入れ子 (`properties` / `items`)
+- `run_id` と `stacks` の各要素のファイル名検査
+- `stacks` の重複
+- `model_overrides` の未知の役割キー
 
 ### 19.4. 呼び出しパターン
 
@@ -901,6 +862,8 @@ wf_specific: {
 [全実装完了後] test_timing='post-pipeline' のとき
   [テスト] テスト実行担当 (test_commands を 1 回実行)
 ```
+
+テスト担当は、手順ごとに種別 (build / test / launch) と実行場所を持つ `test_commands` を、渡された順に実行する。`build` が失敗したら後続は実行せず、未実行の手順として報告する。
 
 per-component のレビューは持たない。品質は後段の `sv-comprehensive-review` で担保する。
 

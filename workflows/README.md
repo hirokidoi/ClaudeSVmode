@@ -66,6 +66,7 @@ SV モードは、以下の課題を **決定的なスクリプト** に落と�
   "tmp_base_dir": "作業ディレクトリ (決め方は sv-mode.md「対話の基本」)",
   "project_root": "実行中プロジェクトのルートパス",
   "project_memory_path": "プロジェクトの規約・memory 類のディレクトリ (任意)",
+  "stacks": ["rails"],
   "run_id": "SV 採番の run-id (例: 20260706-234512-a3f9x1)",
   "checkpoint_declarations": ["designed", "implemented"],
   "complexity_profile": "light | standard | deep",
@@ -99,7 +100,7 @@ SV は返り値の path 群を Read して総括する。`status` の意味と `
 
 ## 共通ヘルパ (Prelude)
 
-Workflow スクリプトは他ファイルを import できないため、共通ヘルパは各 script 冒頭に重複記述する。ヘルパの正本は `_prelude.js.md` (参照用) を参照。レビュー系 wf がコピーする共有ヘルパ (レビュー観点カタログ・コード diff レビュー用ヘルパ・セルフチェック確認) も正本は同ファイル。
+Workflow スクリプトは他ファイルを import できないため、共通ヘルパは各 script 冒頭に重複記述する。ヘルパの正本は `_prelude.js.md` (参照用) を参照。レビュー系 wf がコピーする共有ヘルパ (レビュー観点カタログ・コード diff レビュー用ヘルパ・セルフチェック確認) も正本は同ファイル。正本と複製の一致は `check-prelude.sh` で確かめる。
 
 ## 出力先
 

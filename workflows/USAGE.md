@@ -75,7 +75,8 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 | `tmp_base_dir` | string | ○ | 作業ディレクトリ。決め方は sv-mode.md「対話の基本」の作業ファイル |
 | `run_id` | string | ○ | SV 採番。形式例: `YYYYMMDD-HHMMSS-<6char>`。`date +%Y%m%d-%H%M%S` の結果に、SV が英数字 6 文字を付ける。ファイル名に使える文字だけ (後述「ファイル名になる値」) |
 | `project_memory_path` | string | 任意 | プロジェクトの規約・memory 類を置いたディレクトリ (Claude Code の auto memory を使っていればそのディレクトリ)。ディレクトリがあるときだけ渡す。省略時は policy 観点を CLAUDE.md・プロジェクト規約だけで判定する |
-| `project_root` | string | 任意 | プロジェクトルート絶対パス。コード diff を見るレビュー系 wf では git コマンドの実行場所 (省略時は作業ディレクトリ) |
+| `project_root` | string | 任意 | プロジェクトルート絶対パス。コード diff を見るレビュー系 wf では git コマンドの実行場所、`sv-implement` の検証手順の既定の実行場所 (省略時は作業ディレクトリ) |
+| `stacks` | array | 任意 | プロジェクトの技術スタック (`~/.claude/stacks/` のディレクトリ名の配列。各要素はファイル名になる値 (後述)、重複は `args 構造不足`)。指定すると、ロール定義を読む各担当がスタックのパックも読む。決め方は後述「`stacks` の決め方」。省略時はロール定義だけで進む |
 | `checkpoint_declarations` | array | 任意 | ユーザ宣言のフェーズ停止点 (例: `['designed', 'implemented']`)。受け付ける名前と止まる wf は下表。他の wf にも同じ配列を渡してよく、該当しない wf は止まらない。表に無い名前は `args 構造不足` |
 | `complexity_profile` | enum | 任意 | `'light'` \| `'standard'` \| `'deep'` (後述「モデルの指定」) |
 | `model_overrides` | object | 任意 | 役割別モデル上書き (例: `{reviewer: 'opus'}`)。役割キーは後述「モデルの指定」 |
@@ -92,11 +93,21 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 | `designed` | `sv-design` |
 | `implemented` | `sv-implement` |
 
+### `stacks` の決め方
+
+- 材料: `~/.claude/stacks/*/index.md` を Glob か Read で列挙し、各パックの「当てはまるプロジェクト」と対象プロジェクトのファイルを突き合わせる。どのスタックがあるかの一覧は本書に持たない
+- 複数が当てはまるとき: この作業が触る部分に当てはまるものをすべて渡す。リポジトリの一部だけを触るなら、その部分のスタックに絞る
+- 迷うとき: 自律進行シグナルの「🟡」の 1 点として、推奨付きで聞く
+- 当てはまるパックが無いとき: `stacks` を渡さない。シグナルでは「該当パックなし」と示す
+- ユーザへの示し方: 「🟢」の中に「wf に伝える技術スタック (判断の目印)」を 1 行で入れる
+- 同じ案件の中では、全 wf に同じ `stacks` を渡す
+- 配置されていない名前を渡しても wf は止まらない。担当は成果物に「スタックパック未配置」と書いて続けるだけで、知識は届かない
+
 ### モデルの指定
 
 - `complexity_profile`: `standard` (省略時) は役割ごとの既定と `model_overrides` を使う。`light` は全役割を `sonnet` にし、`deep` は全役割をセッションのモデルにする。どちらも `model_overrides` を無視する
 - `model_overrides`: 役割キーとモデルの別名 (`sonnet` 等) またはフルのモデル ID。`null` はセッションのモデル。表に無いキーは `args 構造不足`
-- 役割定義ファイルと役割キーは対応しない (例: 網羅性チェックは `reviewer.md` を読むが `critique` で制御する)
+- 役割定義ファイルと役割キーは対応しない (例: 網羅性チェックは `reviewer.md` を読むが `critique` で制御する。テスト担当は `verifier.md` を読むが `test_runner` で制御する)
 
 | 役割キー | 既定 | 制御する担当 |
 |---|---|---|
@@ -114,7 +125,7 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 
 ### ファイル名になる値
 
-`run_id`・`sv-investigate` の `areas[].name`・`sv-explore-approach` の `perspectives[]`・`sv-implement` の `components[].name`・`sv-review-plan` の `prev_run_id` は、成果物のファイル名・パスに使われる。文字・数字で始まり、文字・数字・`.`・`_`・`-` だけで書く。それ以外は `args 構造不足`。
+`run_id`・`stacks[]`・`sv-investigate` の `areas[].name`・`sv-explore-approach` の `perspectives[]`・`sv-implement` の `components[].name`・`sv-review-plan` の `prev_run_id` は、成果物のファイル名・パスに使われる。文字・数字で始まり、文字・数字・`.`・`_`・`-` だけで書く。それ以外は `args 構造不足`。
 
 ---
 
@@ -164,9 +175,19 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 | `design_path` | string | ○ | 設計書 md のパス |
 | `components` | array | ○ | `[{ name, files, description, dependencies }]` (name・description は必須、name は重複不可でファイル名になる値 (上記)、dependencies は他要素の name のみ。files は省略可で、実装担当は設計書から、commit 担当は実装 md から対象を特定する) |
 | `run_tests_after` | boolean | 任意 | テスト実行するか |
-| `test_commands` | array | 任意 | `run_tests_after=true` のとき必須 (空は args 構造不足)。実行するコマンド配列 |
+| `test_commands` | array | 任意 | `run_tests_after=true` のとき必須 (空は args 構造不足)。検証の手順の配列。要素は文字列か `{ command, kind, cwd }`。文字列は `kind: 'test'` と同じ。`kind` は `build` / `test` / `launch` (省略時 `test`)、`cwd` は実行場所の絶対パス (省略時は `project_root`)。組み立て方は後述「検証コマンドの組み立て」 |
 | `test_timing` | enum | 任意 | `'post-pipeline'` (default) \| `'per-component'` |
 | `commit_strategy` | enum | 任意 | `'per-component'` \| `'all-at-once'` \| `'none'` (default) |
+
+#### 検証コマンドの組み立て
+
+- 渡すスタックの `verification.md` の「検証コマンド」節から選ぶ
+- テストの範囲: プロジェクトの規約に従う。規約が無ければ、`test_timing: 'per-component'` では変更に届くテスト、`post-pipeline` (完了前の確認) では全件
+- `test_commands` は全コンポーネントで共通の 1 組になる。`per-component` では、どのコンポーネントの変更にも届く範囲を渡す。同じバッチのテストは並列に走るので、出力先を取り合う `build` と、同じアプリを起動する `launch` は `post-pipeline` で使う
+- ビルドを先に、起動確認を最後に並べる。ビルドが失敗すると後続は実行されない
+- 起動確認のコマンドは自分で終わる形にする。起動 → 状態の確認 → 起動したプロセスの停止までを 1 つのコマンドで完結させ、起動したものを残さない。終わらない・プロセスが残る手順は、テスト担当が失敗として報告する
+- 実行場所は、可能ならコマンド側のオプション (`--package-path`、`-C` など) で指定する。`cwd` はそれができないときに使う (`cd` を含む形での実行になり、許可の確認が出ることがある)
+- 人の目が要る確認 (画面の見た目・許可ダイアログ・音) は入れない。SV が実機確認としてユーザに頼む
 
 ### `sv-comprehensive-review` — 変更セット全体の多観点レビュー
 
@@ -197,7 +218,7 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 |---|---|---|---|
 | `change_scope` | object | ○ | `{ files: string[], commit_range: string }`。`files` は必須で空配列不可。`commit_range` は任意で、省略か `'uncommitted'` で作業ツリーの未 commit 変更 (未追跡の新規ファイルを含む)、それ以外は git の範囲指定。対象が git 管理外のときは `files` の全文をレビューする (`commit_range` は無視。変更の中身は `context` とセルフチェック証跡で伝える) |
 | `selfcheck_path` | string | ○ | SV がレビュー前に実施したセルフチェックの証跡 md のパス (後述「セルフチェック証跡」) |
-| `context` | string | 任意 | 変更の意図・背景 |
+| `context` | string | 任意 | 変更の意図・背景。2 巡目以降は、前の巡の成果物の path と通過済みの範囲も書く |
 | `focus_areas` | array | 任意 | 重点観点の配列 |
 
 ## セルフチェック証跡
@@ -234,7 +255,7 @@ Workflow({
 })
 ```
 
-規約・memory 類のディレクトリ (auto memory 等) があるときは `project_memory_path` も渡す。
+規約・memory 類のディレクトリ (auto memory 等) があるときは `project_memory_path` も渡す。スタックを判断したら `stacks` も渡す (例: `stacks: ['rails']`)。
 
 ---
 
@@ -245,6 +266,8 @@ Workflow({
 - **必須の共通引数 (`tmp_base_dir` / `run_id`) を渡し忘れる** → エージェントを起動する前に `args 構造不足` で返る。`run_id` は script 内で時刻・乱数を使えないため、必ず SV が Bash で採番する
 - **レビュー系 wf に `selfcheck_path` を渡さない、または中身のない証跡を渡す** → レビューは実施されない (`args 構造不足` または `rejected`)
 - **`checkpoint_declarations` に表に無い名前を入れる** → `args 構造不足` になる。名前の無い宣言 (「レビュー結果を見せて」など) は wf に渡さず、SV が結果を受け取った時点で止まる
+- **配置されていないスタック名を `stacks` に渡す** → 担当は未配置として続けるだけで、知識は届かない。起動前に `~/.claude/stacks/<名前>/index.md` の有無を確かめる
+- **`test_commands` に人の目が要る確認を入れる** → テスト担当には確かめられない。SV が実機確認としてユーザに頼む
 - **`model_overrides` に存在しない役割キーを入れる** → `args 構造不足` になる (打ち間違いが黙って無視されない)。役割キーは「モデルの指定」の表を参照
 
 ---

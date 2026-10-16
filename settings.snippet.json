@@ -11,6 +11,7 @@
       "Workflow(sv-review-changes)",
       "Read(~/.claude/roles/**)",
       "Read(~/.claude/workflows/**)",
+      "Read(~/.claude/stacks/**)",
       "Edit(tmp/**)",
       "Edit(~/tmp/wf-runs/**)",
       "Bash(git rev-parse *)",

@@ -17,7 +17,7 @@ export const meta = {
         items: { type: 'object', properties: { name: { type: 'string', required: true }, files: { type: 'array', required: false, items: { type: 'string' } }, description: { type: 'string', required: true }, dependencies: { type: 'array', required: false, items: { type: 'string' } } } },
       },
       run_tests_after: { type: 'boolean', required: false, description: 'テスト実行するか (デフォルト false)' },
-      test_commands: { type: 'array', required: false, items: { type: 'string' }, description: 'run_tests_after=true のとき実行するコマンド配列' },
+      test_commands: { type: 'array', required: false, description: 'run_tests_after=true のとき実行する手順の配列。要素は文字列か { command, kind: build|test|launch, cwd }。文字列は kind=test。cwd の既定は project_root' },
       test_timing: { type: 'enum', values: ['post-pipeline', 'per-component'], required: false, description: 'デフォルト post-pipeline (全 impl 完了後に 1 回)' },
       commit_strategy: { type: 'enum', values: ['per-component', 'all-at-once', 'none'], required: false, description: 'デフォルト none' },
     },
@@ -30,12 +30,13 @@ const _WF_ARGS_SCHEMA = {
     design_path: { type: 'string', required: true },
     components: { type: 'array', required: true, items: { type: 'object', properties: { name: { type: 'string', required: true }, files: { type: 'array', required: false, items: { type: 'string' } }, description: { type: 'string', required: true }, dependencies: { type: 'array', required: false, items: { type: 'string' } } } } },
     run_tests_after: { type: 'boolean', required: false },
-    test_commands: { type: 'array', required: false, items: { type: 'string' } },
+    test_commands: { type: 'array', required: false },
     test_timing: { type: 'enum', values: ['post-pipeline', 'per-component'], required: false },
     commit_strategy: { type: 'enum', values: ['per-component', 'all-at-once', 'none'], required: false },
   },
 }
 
+// >>> sv-prelude:core
 // ============================================================================
 // SV workflow prelude
 // ============================================================================
@@ -53,6 +54,8 @@ function parseSvArgs(raw) {
 
 const svArgs = parseSvArgs(args)
 
+const KIT_DIR = '~/.claude'
+
 const CHECKPOINT_NAMES = ['investigated', 'ui_prototyped', 'designed', 'implemented']
 
 const COMMON_ARGS_SCHEMA = {
@@ -60,6 +63,7 @@ const COMMON_ARGS_SCHEMA = {
   run_id: { type: 'string', required: true },
   project_memory_path: { type: 'string', required: false },
   project_root: { type: 'string', required: false },
+  stacks: { type: 'array', required: false, items: { type: 'string' } },
   checkpoint_declarations: { type: 'array', required: false, items: { type: 'enum', values: CHECKPOINT_NAMES } },
   complexity_profile: { type: 'enum', values: ['light', 'standard', 'deep'], required: false },
   model_overrides: { type: 'object', required: false },
@@ -123,6 +127,12 @@ function validateArgs(schema) {
     checkOne(`args.wf_specific.${key}`, wfSpecificVal[key], spec)
   }
   if (typeof svArgs.run_id === 'string') errors.push(...fileNameErrors('args.run_id', svArgs.run_id))
+  if (Array.isArray(svArgs.stacks)) {
+    const names = svArgs.stacks.filter(n => typeof n === 'string')
+    names.forEach(n => errors.push(...fileNameErrors('args.stacks', n)))
+    const dups = names.filter((n, i) => names.indexOf(n) !== i)
+    if (dups.length > 0) errors.push(`args.stacks に重複: ${[...new Set(dups)].join(', ')}`)
+  }
   const overrides = svArgs.model_overrides
   if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
     const roles = Object.keys(ROLE_MODEL_DEFAULTS)
@@ -176,6 +186,33 @@ function runDir(wfName) {
   return `${svArgs.tmp_base_dir}/wf-${wfName}/${svArgs.run_id}`
 }
 
+function stackPackBlock(reader) {
+  const stacks = svArgs.stacks || []
+  if (stacks.length === 0) return ''
+  return `
+# スタックパック (必読)
+このプロジェクトの技術スタック: ${stacks.join(', ')}
+
+ロール定義を読んだあと、スタックごとに次を行ってください:
+1. ${KIT_DIR}/stacks/<スタック名>/index.md を Read する
+2. index.md の「読むファイル」の表のうち、読み手が ${reader} の行のファイルを、index.md と同じディレクトリから Read する。条件が付いた行は、条件の目印を対象のプロジェクトで確かめ、当てはまるときだけ読む
+
+パックはロール定義を補う知識です。ロール定義や本プロンプトの指定と食い違うときは、そちらに従ってください。
+index.md が存在しないスタックは読まずに続け、成果物に「スタックパック未配置: <スタック名>」と書いてください。
+`.trim()
+}
+
+// role はロールファイル名 (拡張子なし)
+function roleSection(role, note) {
+  const head = `
+# ロール定義 (必読)
+以下ファイルを Read で全文読み、指示を全て守ってください。出力形式は本プロンプトの指定を正とします:
+- ${KIT_DIR}/roles/${role}.md
+`.trim()
+  return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
+}
+// <<< sv-prelude:core
+
 // トポロジカルソートで dependencies を尊重した batch を作る
 function topoSortToBatches(components) {
   const name2comp = {}
@@ -196,6 +233,35 @@ function topoSortToBatches(components) {
     batches.push(batch)
   }
   return batches
+}
+
+const TEST_STEP_KINDS = ['build', 'test', 'launch']
+const TEST_STEP_KEYS = ['command', 'kind', 'cwd']
+
+function normalizeTestCommands(list) {
+  const steps = []
+  const errors = []
+  list.forEach((el, i) => {
+    const path = `args.wf_specific.test_commands[${i}]`
+    if (typeof el === 'string') {
+      if (el === '') errors.push(`${path} が空文字`)
+      else steps.push({ command: el, kind: 'test', cwd: null })
+      return
+    }
+    if (el === null || typeof el !== 'object' || Array.isArray(el)) {
+      errors.push(`${path} は文字列か { command, kind, cwd } ではない`)
+      return
+    }
+    const before = errors.length
+    const unknownKeys = Object.keys(el).filter(k => !TEST_STEP_KEYS.includes(k))
+    if (unknownKeys.length > 0) errors.push(`${path} に未知のキー ${unknownKeys.join(', ')} (許容: ${TEST_STEP_KEYS.join('|')})`)
+    if (typeof el.command !== 'string' || el.command === '') errors.push(`${path}.command が不足 (空でない文字列が必要)`)
+    const kind = el.kind === undefined ? 'test' : el.kind
+    if (!TEST_STEP_KINDS.includes(kind)) errors.push(`${path}.kind=${JSON.stringify(el.kind)} は許容値 ${TEST_STEP_KINDS.join('|')} 外`)
+    if (el.cwd !== undefined && (typeof el.cwd !== 'string' || !el.cwd.startsWith('/'))) errors.push(`${path}.cwd は絶対パスが必要`)
+    if (errors.length === before) steps.push({ command: el.command, kind, cwd: el.cwd || null })
+  })
+  return { steps, errors }
 }
 
 // ============================================================================
@@ -225,6 +291,9 @@ for (const c of components) {
 if (run_tests_after === true && (!Array.isArray(test_commands) || test_commands.length === 0)) {
   _wfSpecificErrors.push('args.wf_specific.test_commands が不足 (run_tests_after=true のとき required)')
 }
+const _testCommands = normalizeTestCommands(test_commands || [])
+_wfSpecificErrors.push(..._testCommands.errors)
+const testSteps = _testCommands.steps
 if (_wfSpecificErrors.length > 0) {
   return argsValidationEscalation(_wfSpecificErrors)
 }
@@ -261,6 +330,7 @@ const TEST_RUNNER_SCHEMA = {
   properties: {
     pass: { type: 'boolean' },
     failed_tests: { type: 'array', items: { type: 'string' } },
+    not_run_steps: { type: 'array', items: { type: 'number' } },
   },
   required: ['pass'],
 }
@@ -284,8 +354,7 @@ async function implementerAgent(comp) {
   const prompt = `
 あなたは実装担当エージェントです。
 
-# ロール定義 (必読)
-- ~/.claude/roles/implementer.md
+${roleSection('implementer')}
 
 # 設計書
 以下ファイルを Read で確認して従ってください:
@@ -342,12 +411,24 @@ async function testRunnerAgent(scope) {
     : `対象: 全コンポーネントの impl 完了状態\n${(scope.components || []).map(c => `- ${c.name} (files: ${(c.files || []).join(', ') || '未指定'})`).join('\n')}`
   const jsonKey = isPerComp ? `"component": "${scope.comp.name}"` : `"scope": "all"`
 
+  const stepsBlock = testSteps
+    .map((s, i) => `${i + 1}. 種別: ${s.kind} / 実行場所: ${s.cwd || svArgs.project_root || '作業ディレクトリ'} / コマンド: ${s.command}`)
+    .join('\n')
+
+  // Bash は呼び出しごとに cwd が戻るため、cd を同じ呼び出しに含める
   const prompt = `
 あなたはテスト実行担当エージェントです。
 
+${roleSection('verifier')}
+
 # タスク
-以下コマンドを Bash で実行してテスト結果を報告してください。
-- ${(test_commands || []).join('\n- ')}
+以下の手順を番号順に Bash で実行し、結果を報告してください。
+${stepsBlock}
+
+# 実行のしかた
+- 実行場所が現在の作業ディレクトリと違う手順は、\`cd <実行場所> && <コマンド>\` の形で 1 回の Bash 呼び出しにする
+- build の手順が失敗したら後続の手順は実行せず、未実行の手順として md に書く
+- launch の手順は、起動 → 状態の確認 → 起動したプロセスの停止までを 1 つのコマンドで終える約束。終わらない・起動したプロセスが残る手順は失敗として報告し、自分で kill して取り繕わない
 
 # 対象
 ${scopeBlock}
@@ -357,23 +438,24 @@ ${scopeBlock}
 ${outputPath}
 
 構成:
-- ## 実行コマンド
+- ## 実行した手順 (種別・実行場所・コマンド・終了コード)
 - ## 結果 (pass / fail)
-- ## 詳細ログ (関連部分)
+- ## 詳細ログ (失敗した手順は失敗行を含めて引用する)
 - ## 判定 JSON (末尾)
 
 判定 JSON:
 {
   ${jsonKey},
   "pass": true|false,
-  "failed_tests": [...]
+  "failed_tests": [...],
+  "not_run_steps": [...]
 }
 
 # 制約
 - 最終応答は「テスト完了 (pass=<bool>)」の 1 文で良い
 
 # StructuredOutput の呼び出し (必須)
-最終応答テキストを返す前に、**必ず StructuredOutput ツール**を呼び出して判定オブジェクト (pass: bool、failed_tests: string の配列) を返してください。md 内の判定 JSON と必ず一致させること。test_commands のいずれかが実行できなかった場合も pass=false とする。
+最終応答テキストを返す前に、**必ず StructuredOutput ツール**を呼び出して判定オブジェクト (pass: bool、failed_tests: string の配列、not_run_steps: 未実行の手順の番号の配列) を返してください。md 内の判定 JSON と必ず一致させること。pass は全手順が実行されて成功したときだけ true とし、実行できなかった手順があれば pass=false とする。
 `.trim()
 
   return agent(prompt, agentOpts('test_runner', label, { schema: TEST_RUNNER_SCHEMA }))

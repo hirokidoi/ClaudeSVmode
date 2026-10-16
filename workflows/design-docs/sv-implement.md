@@ -22,7 +22,10 @@
     }
   ],
   "run_tests_after": true,
-  "test_commands": ["<プロジェクトのテストコマンド>"],
+  "test_commands": [
+    "<プロジェクトのテストコマンド>",
+    { "command": "<ビルドのコマンド>", "kind": "build | test | launch", "cwd": "<実行場所の絶対パス>" }
+  ],
   "test_timing": "post-pipeline | per-component",
   "commit_strategy": "per-component | all-at-once | none"
 }
@@ -32,7 +35,7 @@
 - `dependencies` で順序制約を表現 (空なら独立実装可)
 - 各要素の `name` と `description` は必須。`name` が重複している、または `dependencies` に存在しない `name` があると、args 構造不足の escalation を返す
 - `files` は省略可。省略時、実装担当は設計書から、テスト担当は対象を「未指定」として、commit 担当は実装 md の「変更ファイル一覧」から対象を特定する
-- `test_commands` は `run_tests_after=true` のとき必須 (未指定または空は args 構造不足の escalation)
+- `test_commands` は `run_tests_after=true` のとき必須 (未指定または空は args 構造不足の escalation)。要素は文字列か `{ command, kind, cwd }`。文字列は `{ command: <文字列>, kind: 'test' }` と同じ。`kind` は `build` / `test` / `launch` (省略時 `test`)、`cwd` は実行場所の絶対パス (省略時は `project_root`、それも無ければ作業ディレクトリ)。`command` が空・`kind` が許容外・`cwd` が絶対パスでない・知らないキー・文字列でもオブジェクトでもない要素は args 構造不足
 - `test_timing` — test 実行タイミング (詳細は _common.md §20)
   - `post-pipeline` (デフォルト): 全コンポーネントの実装完了後にまとめて 1 回
   - `per-component`: 各コンポーネントの impl 直後に実行 (依存無し前提)
@@ -89,13 +92,15 @@ SV は各 `implMdPath` を Read して変更内容を確認し、`postPipelineTe
     (test_timing='per-component' の場合)
     [テストフェーズ (per-component)]
       └─ agent: テスト実行担当 x 1
-         入力: test_commands
+         ロール: verifier.md
+         入力: test_commands (正規化した手順)
          出力: agents/test-<name>.md
 
 [全コンポーネント完了後]
   [テストフェーズ (post-pipeline)] run_tests_after=true かつ test_timing='post-pipeline' (デフォルト) のとき
     └─ agent: テスト実行担当 x 1
-       入力: test_commands
+       ロール: verifier.md
+       入力: test_commands (正規化した手順)
        出力: agents/test-all.md
 
   [commit フェーズ] commit_strategy != 'none' のとき
@@ -130,7 +135,7 @@ per-component のレビューは持たない。品質は以下で担保する:
 - **post-pipeline テストが実行されない** — テスト担当が null を返したとき。テスト未実施のまま commit に進まず、componentOutputs を返してエスカレ
 - **コンポーネントの失敗** — 複数バッチのときは失敗したバッチで後続をスキップしてエスカレ。バッチが 1 つでも、失敗したコンポーネントがあればテストと commit に進まずエスカレ (summary に失敗したコンポーネント名)
 - **循環依存** — components の dependencies に循環を検出したら即エスカレ
-- **test_commands 未指定** — `run_tests_after=true` で test_commands が無いときは args 構造不足
+- **test_commands 未指定・不正** — `run_tests_after=true` で test_commands が無いとき、または要素の形が不正なときは args 構造不足
 
 ## 6. `meta` ブロック
 
@@ -154,7 +159,8 @@ export const meta = {
 const { design_path, components, run_tests_after, test_commands, test_timing, commit_strategy } = svArgs.wf_specific
 const dir = runDir('sv-implement')
 
-const wfSpecificErrors = <components の name の重複 + name のファイル名検査 (fileNameErrors) + dependencies に存在しない name + run_tests_after=true なのに test_commands が空>
+const { steps: testSteps, errors: testCommandErrors } = normalizeTestCommands(test_commands || [])   // 文字列は { command, kind: 'test' }。要素の形の不正をエラーにする
+const wfSpecificErrors = <components の name の重複 + name のファイル名検査 (fileNameErrors) + dependencies に存在しない name + run_tests_after=true なのに test_commands が空> + testCommandErrors
 if (wfSpecificErrors.length > 0) return argsValidationEscalation(wfSpecificErrors)
 const testTiming = test_timing || 'post-pipeline'
 const batches = topoSortToBatches(components)   // dependencies を尊重
@@ -167,7 +173,7 @@ async function implementComponent(comp) {
 
   let testResult = null
   if (run_tests_after && testTiming === 'per-component') {
-    testResult = await agent(buildTestRunnerPrompt({ test_commands, comp, dir }),
+    testResult = await agent(buildTestRunnerPrompt({ testSteps, comp, dir }),
       agentOpts('test_runner', `test-${comp.name}`, { schema: TEST_RUNNER_SCHEMA }))   // pass: boolean を必須で返させる
     if (testResult == null) return { comp, error: 'test_failed', implMdPath: <impl md のパス> }
   }
@@ -197,7 +203,7 @@ if (componentResults.some(r => !r.succeeded)) return escalation(..., buildCompon
 let postPipelineTestResult = null
 let postPipelineTestMdPath = null
 if (run_tests_after && testTiming === 'post-pipeline') {
-  postPipelineTestResult = await agent(buildTestRunnerPrompt({ test_commands, dir }), agentOpts('test_runner', 'test-all', { schema: TEST_RUNNER_SCHEMA }))   // pass: boolean を必須で返させる
+  postPipelineTestResult = await agent(buildTestRunnerPrompt({ testSteps, dir }), agentOpts('test_runner', 'test-all', { schema: TEST_RUNNER_SCHEMA }))   // pass: boolean を必須で返させる
   if (postPipelineTestResult == null) return escalation(..., { componentOutputs: buildComponentOutputs() })   // テスト未実施のまま commit に進まない
   postPipelineTestMdPath = `${dir}/agents/test-all.md`
 }
