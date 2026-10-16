@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Workflow(sv-investigate)",
+      "Workflow(sv-explore-approach)",
+      "Workflow(sv-prototype-ui)",
+      "Workflow(sv-design)",
+      "Workflow(sv-implement)",
+      "Workflow(sv-comprehensive-review)",
+      "Workflow(sv-review-plan)",
+      "Workflow(sv-review-changes)",
+      "Read(~/.claude/roles/**)",
+      "Read(~/.claude/workflows/**)",
+      "Edit(tmp/**)",
+      "Edit(~/tmp/wf-runs/**)",
+      "Bash(git rev-parse *)",
+      "Bash(git diff *)",
+      "Bash(git status *)",
+      "Bash(mkdir -p *)",
+      "Bash(cp *)",
+      "Bash(diff *)",
+      "Bash(date *)"
+    ]
+  }
+}
