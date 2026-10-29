@@ -145,13 +145,36 @@ assert_nofile "T-1 空白を含むパスの Bash で cwd の下にフォルダ�
 run "$(mk $S PreToolUse a5s Read "$(ti_file "$T/sp ace/wf-sv-x/r1/mailbox/kappa/inbox.md")" "$T/cwdk")"
 assert_eq "T-1 空白を含むパスも Read なら結び付く" "$T/sp ace/wf-sv-x/r1/mailbox/kappa" "$(cat "$(state_of $S)/agents/a5s/box")"
 
-# run ディレクトリがまだ無いうちの Bash では結び付けず、できた後の同じ Bash では結び付く
-NOTYET=$RUNS/wf-sv-design/run-notyet/mailbox/mu
-run "$(mk $S PreToolUse a5u Bash "$(ti_cmd "cat $NOTYET/inbox.md")")"
-assert_nofile "T-1 run ディレクトリが無いうちの Bash では結び付けない" "$(state_of $S)/agents/a5u/box"
-mkdir -p "$RUNS/wf-sv-design/run-notyet"
-run "$(mk $S PreToolUse a5u Bash "$(ti_cmd "cat $NOTYET/inbox.md")")"
-assert_eq "T-1 run ディレクトリができた後の Bash では結び付く" "$NOTYET" "$(cat "$(state_of $S)/agents/a5u/box")"
+# 相対パスは run ディレクトリがまだ無いうちの Bash では結び付けず、できた後の同じ Bash では結び付く
+mkdir -p "$T/rel2"
+run "$(mk $S PreToolUse a5u Bash "$(ti_cmd 'cat w/wf-sv-design/run-notyet/mailbox/mu/inbox.md')" "$T/rel2")"
+assert_nofile "T-1 run ディレクトリが無いうちの相対パスの Bash では結び付けない" "$(state_of $S)/agents/a5u/box"
+mkdir -p "$T/rel2/w/wf-sv-design/run-notyet"
+run "$(mk $S PreToolUse a5u Bash "$(ti_cmd 'cat w/wf-sv-design/run-notyet/mailbox/mu/inbox.md')" "$T/rel2")"
+assert_eq "T-1 run ディレクトリができた後の相対パスの Bash では結び付く" "$T/rel2/w/wf-sv-design/run-notyet/mailbox/mu" "$(cat "$(state_of $S)/agents/a5u/box")"
+
+# 絶対パスの inbox.md は run ディレクトリが無くても結び付く
+ABSNEW=$RUNS/wf-sv-design/run-absnew/mailbox/nu
+run "$(mk $S PreToolUse a5v Bash "$(ti_cmd "cat $ABSNEW/inbox.md")")"
+assert_eq "T-1 絶対パスの Bash は run ディレクトリが無くても結び付く" "$ABSNEW" "$(cat "$(state_of $S)/agents/a5v/box")"
+
+# シェル変数に入れたフォルダの絶対パスで結び付く
+B3=$(new_box run1 xi)
+run "$(mk $S PreToolUse a5w Bash "$(ti_cmd "M=$B3; cat \$M/inbox.md")")"
+assert_eq "T-1 シェル変数に入れたフォルダのパスで結び付く" "$B3" "$(cat "$(state_of $S)/agents/a5w/box")"
+FOLDNEW=$RUNS/wf-sv-design/run-foldnew/mailbox/omi
+run "$(mk $S PreToolUse a5x Bash "$(ti_cmd "M=$FOLDNEW; cat \$M/inbox.md")")"
+assert_nofile "T-1 フォルダだけのパスは run ディレクトリが無いうちは結び付けない" "$(state_of $S)/agents/a5x/box"
+B4=$(new_box run1 pi)
+run "$(mk $S PreToolUse a5y Bash "$(ti_cmd "ls \"$T/sp ace$B4\"")")"
+assert_nofile "T-1 空白を含むフォルダのパスの途中からは結び付けない" "$(state_of $S)/agents/a5y/box"
+
+# 絶対パスに見える断片は、run ディレクトリが無ければ結び付けない
+PAREN=$RUNS/wf-sv-design/run-paren/mailbox/rho
+run "$(mk $S PreToolUse a5z Bash "$(ti_cmd "cat \"$T/p (c)$PAREN/inbox.md\"")")"
+assert_nofile "T-1 括弧の直後から始まる inbox のパスは run ディレクトリが無いと結び付けない" "$(state_of $S)/agents/a5z/box"
+run "$(mk $S PreToolUse a5q Bash "$(ti_cmd "cat $RUNS/wf-sv-design/\$RUN/mailbox/sig/inbox.md")")"
+assert_nofile "T-1 シェル変数を含む inbox のパスは run ディレクトリが無いと結び付けない" "$(state_of $S)/agents/a5q/box"
 
 # SV の wf の run ディレクトリの形でない mailbox は結び付けない
 mkdir -p "$T/repo/mailbox/theta"

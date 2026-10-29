@@ -237,7 +237,7 @@ function mailboxBlock(name) {
   - inbox.md: SV から担当への連絡
   - outbox.md: 担当から SV への連絡
 
-作業を始める前に、inbox.md と outbox.md を Read してください。無いのが通常の状態なので、無いファイルは飛ばし、読めなかったことは成果物のどこ (アクセス不能領域を含む) にも書きません。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+作業を始める前に、inbox.md と outbox.md を Read ツールで 1 つずつ読んでください。パスは上のフォルダに続けて完全に書き、Bash やシェル変数では読みません。無いのが通常の状態なので、無いファイルは飛ばし、読めなかったことは成果物のどこ (アクセス不能領域を含む) にも書きません。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
 `.trim()
 }
 

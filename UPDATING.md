@@ -55,6 +55,25 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
 
 新しい版を上に並べる。
 
+### 1.2.2
+
+担当が連絡帳を Bash やシェル変数で読んでも、フックが担当と連絡帳を結び付け、新着が担当に届くようにする。
+
+- 増えたファイル: なし
+- 変わったファイル (手を入れていればマージ)
+  - `workflows/_prelude.js.md` と `workflows/sv-*.js` 8 本: 担当は inbox と outbox を Read ツールで、完全なパスを書いて読む
+  - `workflows/mailbox/rules.md`: 同上
+  - `workflows/mailbox/hook.sh`: Bash のコマンドに連絡帳のフォルダの絶対パスがあれば結び付ける。inbox・outbox の絶対パスは run ディレクトリが無くても結び付ける
+  - `workflows/mailbox/test-hook.sh`: 上の結び付けの検査
+  - `workflows/VERSION`
+- 無くなったファイル: なし
+- 配置しない文書の変更
+  - `UPDATING.md`: 1.2.2 の項
+- 設定
+  - `settings.json` への追加はない
+  - `CLAUDE.md` への追加はない
+- roles は変わらない
+
 ### 1.2.1
 
 wf や Agent ツールで起動した担当 (サブエージェント) が、CLAUDE.md の取り込みで文脈に入る `sv-mode.md` とアドオンを自分に当てはめないようにする。

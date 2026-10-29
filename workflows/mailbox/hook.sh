@@ -26,10 +26,18 @@ JQ_PROG='
   ($ti.file_path // "" | tostring) as $fp
 | ($ti.command // "" | tostring) as $cmd
 | (if $fp == "" then "" else ($fp | absp) end) as $fabs
+| (if $cmd == "" then "" else
+     ([$cmd | match("[^\\s\"\\x27();|&<>=]*wf-sv-[^/\\s\"\\x27();|&<>=]+/[^/\\s\"\\x27();|&<>=]+/mailbox/[^/\\s\"\\x27();|&<>=]+/(inbox|outbox)\\.md"; "g") | .string] | .[0] // "")
+   end) as $rawf
+| (if $rawf == "" then "" else
+     ([$cmd | match("(?<![^\\s\"\\x27(;|&<>=])(/|~/|\\$HOME/|\\$\\{HOME\\}/)[^\\s\"\\x27();|&<>=$]*wf-sv-[^/\\s\"\\x27();|&<>=$]+/[^/\\s\"\\x27();|&<>=$]+/mailbox/[^/\\s\"\\x27();|&<>=$]+/(inbox|outbox)\\.md"; "g") | .string] | .[0] // "")
+   end) as $rawa
+| (if $cmd == "" or $rawf != "" then "" else
+     ([$cmd | match("(?<![^\\s\"\\x27(;|&<>=])(/|~/|\\$HOME/|\\$\\{HOME\\}/)[^\\s\"\\x27();|&<>=]*wf-sv-[^/\\s\"\\x27();|&<>=]+/[^/\\s\"\\x27();|&<>=]+/mailbox/[^/\\s\"\\x27();|&<>=$]+"; "g") | .string] | .[0] // "")
+   end) as $rawd
+| (if $rawf != "" then $rawf else $rawd end) as $rawc
 | (if ($fabs | ismbx) then $fabs
-   elif $cmd != "" then
-     ([$cmd | match("[^\\s\"\\x27();|&<>=]*wf-sv-[^/\\s\"\\x27();|&<>=]+/[^/\\s\"\\x27();|&<>=]+/mailbox/[^/\\s\"\\x27();|&<>=]+/(inbox|outbox)\\.md"; "g") | .string]
-      | (.[0] // "") | if . == "" then "" else absp end)
+   elif $rawc != "" then ($rawc | absp)
    else "" end
    | sub("/(inbox|outbox)\\.md$"; "")) as $bind
 | "EV=" + ((.hook_event_name // "") | tostring | @sh),
@@ -37,7 +45,7 @@ JQ_PROG='
   "SID=" + ((.session_id // "") | tostring | @sh),
   "TOOL=" + ((.tool_name // "") | tostring | @sh),
   "BIND=" + ($bind | @sh),
-  "BINDCMD=" + (if $bind != "" and ($fabs | ismbx | not) then "1" else "0" end),
+  "BINDCMD=" + (if $bind != "" and ($fabs | ismbx | not) and ($rawa == "" or $rawa != $rawf) then "1" else "0" end),
   "FABS=" + ($fabs | @sh),
   "HASRANGE=" + (if ($ti | has("offset") or has("limit")) then "1" else "0" end),
   "BG=" + (if ([(.background_tasks // [])[]? | select(.type == "workflow" and .status == "running" and ((.name // "") | tostring | . == "" or startswith("sv-")))] | length) > 0 then "1" else "0" end),
@@ -131,7 +139,7 @@ bind_agent() {
 agent_side() {
   A=$STATE/agents/$AID
   if [ ! -f "$A/box" ]; then
-    # コマンドから取ったパスは空白などで切れて誤りうるので、run ディレクトリが実在するときだけ結び付ける
+    # コマンドから取った相対パスとフォルダだけのパスは空白などで切れて誤りうるので、run ディレクトリが実在するときだけ結び付ける
     if [ "$BINDCMD" = 1 ] && [ ! -d "${BIND%/mailbox/*}" ]; then
       return 0
     fi
