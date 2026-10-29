@@ -102,16 +102,16 @@ export const meta = {
 
 ```javascript
 const { areas, context, completeness_check } = svArgs.wf_specific
-const dir = runDir('sv-investigate')
+const dir = runDir(_WF_NAME)
 
 const dupNames = <areas の name の重複 + name のファイル名検査 (fileNameErrors)>
 if (dupNames.length > 0) return argsValidationEscalation([<name の重複とファイル名エラー>])
 
 phase('調査')
 const investigations = await parallel(
-  areas.map(area => () => agent(
+  areas.map(area => () => svAgent(
     buildInvestigatorPrompt({ area, context, dir }),
-    agentOpts('investigator', `investigate:${area.name}`, { agentType: 'general-purpose' })
+    'investigator', `investigate:${area.name}`, { agentType: 'general-purpose', schema: COMPLETION_SCHEMA }
   ))
 )
 
@@ -132,9 +132,9 @@ let critiquePath = null
 if (completeness_check !== false) {
   phase('網羅性チェック')
   critiquePath = `${dir}/agents/completeness-critic.md`
-  const critique = await agent(
+  const critique = await svAgent(
     buildCompletenessCriticPrompt({ areas, succeededAreas, context, dir }),
-    agentOpts('critique', 'completeness-critic')
+    'critique', 'completeness-critic', { schema: COMPLETION_SCHEMA }
   )
   if (critique == null) critiquePath = null
 }

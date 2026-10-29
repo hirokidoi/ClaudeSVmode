@@ -98,15 +98,15 @@ export const meta = {
 
 ```javascript
 const { goal, constraints, perspectives, background } = svArgs.wf_specific
-const dir = runDir('sv-explore-approach')
+const dir = runDir(_WF_NAME)
 const activePerspectives = perspectives && perspectives.length ? perspectives : ['mvp', 'risk', 'scalability', 'user-experience']
 if (<activePerspectives に重複、または fileNameErrors に該当する要素>) return argsValidationEscalation([<重複した観点とファイル名エラー>])
 
 phase('生成')
 const proposals = await parallel(
-  activePerspectives.map(p => () => agent(
+  activePerspectives.map(p => () => svAgent(
     buildProposalPrompt({ perspective: p, goal, constraints, background, dir }),
-    agentOpts('designer', `propose:${p}`)
+    'designer', `propose:${p}`, { schema: COMPLETION_SCHEMA }
   ))
 )
 
@@ -132,9 +132,9 @@ if (validProposals.length < activePerspectives.length / 2) {
 phase('審査')
 const succeededPerspectives = activePerspectives.filter((_, i) => proposals[i] != null)
 const judgments = await parallel(
-  succeededPerspectives.map(p => () => agent(
+  succeededPerspectives.map(p => () => svAgent(
     buildJudgePrompt({ perspective: p, goal, constraints, dir }),
-    agentOpts('judge', `judge:${p}`)
+    'judge', `judge:${p}`, { schema: COMPLETION_SCHEMA }
   ))
 )
 

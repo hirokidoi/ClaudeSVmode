@@ -13,9 +13,10 @@ workflow (wf) を組み合わせて案件を進める SV (スーパーバイザ�
 | `workflows/` | wf 本体と、その使い方の文書 |
 | `roles/` | wf 内のエージェントが読む役割定義 |
 | `stacks/` | 技術スタック別の補足知識 (パック)。作り方と足し方は `stacks/README.md` |
-| `settings.snippet.json` | wf が確認なしで動くための許可設定 |
+| `settings.snippet.json` | wf が確認なしで動くための許可設定と、連絡帳のフック設定 |
+| `UPDATING.md` | 更新の手順 (配置しない) |
 
-導入の流れは、配置 → CLAUDE.md への書き足し → 許可設定 → 確認。
+導入の流れは、配置 → CLAUDE.md への書き足し → 許可設定 → フック設定 → 確認。更新は `UPDATING.md` を参照。
 
 ## 前提
 
@@ -30,6 +31,7 @@ workflow (wf) を組み合わせて案件を進める SV (スーパーバイザ�
     - 利用者自身の設定ファイル (ユーザ・プロジェクト・ローカル) に `disableWorkflows` がある、またはシェルで環境変数 `CLAUDE_CODE_DISABLE_WORKFLOWS=1` を設定している: それを外せば使える (`enableWorkflows` では打ち消せない)
     - 組織の管理設定 (managed settings) や管理画面で無効にされている: 利用者の設定では有効にできない。管理者に有効化を依頼する
 - wf の Bash は macOS / Linux のシェルを前提にする (`mkdir -p` / `cp` / `diff` / `date`)
+- 連絡帳のフックは jq を使う。jq が無ければ、フックを入れていないのと同じ動きになる (「フック設定」参照)
 - レビュー系 wf は、git があれば差分を、無ければ対象ファイルの全文をレビューする
 - プロンプトと文書は日本語。成果物の言語は導入先の言語設定に従う
 
@@ -105,13 +107,26 @@ cp sv-mode.md ~/.claude/
 - SV モードは対話の CLI で使う。wf はバックグラウンドで動くため、`claude -p` で SV モードを使うと、wf の完了を待たずにセッションが終わり、wf が途中で止まることがある (wf を単体で起動した場合の挙動は確かめていない)
 - 対話なし (`claude -p` や Agent SDK) で wf を単体で起動する場合は、`Workflow` の許可ルールが必須 (対話の CLI では初回に確認ダイアログが出る)
 
+## フック設定
+
+連絡帳 (wf の実行中に SV と担当がやりとりする仕組み。使い方は `workflows/USAGE.md` の「連絡帳」) のフックを入れる。
+
+- `settings.snippet.json` の `hooks` にあるイベントごとの要素を、`~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` を使う場合はその設定ディレクトリの `settings.json`) の同じイベントの配列の末尾に足す
+  - 既存の要素は残す。同じイベントのフックは並んで動く
+  - そのイベントの配列が無ければ、配列ごと足す
+- プロジェクトの設定ではなくユーザ設定に入れる。プロジェクト設定は Claude Code を起動したディレクトリのものしか読まれず、どのプロジェクトで wf を動かしても効かせるため
+- フックを入れなくても SV モードは動く。その場合、連絡帳は担当が自分で読む動きだけになる
+- `disableAllHooks` を使っているとフックは効かない
+
 ## 確認
 
+- `sh ~/.claude/workflows/mailbox/test-hook.sh` が `OK` で終わること (jq が無い環境では飛ばす)
 - Claude Code を再起動し、`/` の補完に `sv-investigate` などが出ること、`/memory` に `sv-mode.md` が出ることを確かめる
 - 試運転: 小さなプロジェクトで「この中の X について調べたい」と頼み、SV モードの提案 → 承諾 → `sv-investigate` の起動 → 作業ディレクトリに成果物ができる、まで通ることを確かめる。途中で出た許可の確認は、許可設定に足すか判断する
+  - フックを入れた場合は、wf の実行中に run ディレクトリ (作業ディレクトリの `wf-<wf 名>/<run_id>/`) の `mailbox/<担当名>/status` が更新されることも確かめる
 - 任意: `stacks` を指定して wf を起動し、担当の成果物に「スタックパック未配置」が出ないことを確かめる
 
 ## 更新と取り外し
 
-- 更新: 配置と同じコマンドで上書きする。同じ名前のスタックパックも上書きされる (自分で足すパックは別の名前で置く。詳細は `stacks/README.md`)
-- 取り外し: CLAUDE.md から足した行を消す。`~/.claude/sv-mode.md`、`~/.claude/workflows/sv-*.js` と関連文書、`~/.claude/roles/` のキット由来のファイル (designer / implementer / investigator / reviewer / verifier)、`~/.claude/stacks/` のキット由来のパックは、中身を確かめてから削除する
+- 更新: `UPDATING.md` に従う。同じ名前のスタックパックは上書きされる (自分で足すパックは別の名前で置く。詳細は `stacks/README.md`)
+- 取り外し: CLAUDE.md から足した行を消す。`~/.claude/settings.json` に足した許可ルールと hooks の要素を消す。`~/.claude/sv-mode.md`、`~/.claude/workflows/sv-*.js` と関連文書、`~/.claude/roles/` のキット由来のファイル (designer / implementer / investigator / reviewer / verifier)、`~/.claude/stacks/` のキット由来のパックは、中身を確かめてから削除する

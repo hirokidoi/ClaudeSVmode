@@ -22,5 +22,42 @@
       "Bash(diff *)",
       "Bash(date *)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$HOME/.claude/workflows/mailbox/hook.sh\"" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$HOME/.claude/workflows/mailbox/hook.sh\"" }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$HOME/.claude/workflows/mailbox/hook.sh\"" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$HOME/.claude/workflows/mailbox/hook.sh\"" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "sh \"$HOME/.claude/workflows/mailbox/hook.sh\"", "asyncRewake": true, "timeout": 3600 }
+        ]
+      }
+    ]
   }
 }

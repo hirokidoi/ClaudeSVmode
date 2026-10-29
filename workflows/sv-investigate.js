@@ -20,6 +20,9 @@ export const meta = {
   },
 }
 
+// 本体からは meta を参照できないため meta.name と同じ値を持つ
+const _WF_NAME = 'sv-investigate'
+
 // 本体からは meta を参照できないため同じスキーマを持つ。meta.argsSchema と必ず同期させる
 const _WF_ARGS_SCHEMA = {
   wf_specific: {
@@ -204,6 +207,39 @@ function roleSection(role, note) {
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
+
+// 返り値の形式を持たない担当にも、返り値を提出させるための最小の形式
+const COMPLETION_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+  },
+  required: ['summary'],
+}
+
+function mailboxDir(name) {
+  return `${runDir(_WF_NAME)}/mailbox/${name}`
+}
+
+function mailboxBlock(name) {
+  const dir = mailboxDir(name)
+  return `
+# 連絡帳 (必読)
+- 担当名: ${name}
+- 連絡帳のフォルダ: ${dir}
+  - inbox.md: SV から担当への連絡
+  - outbox.md: 担当から SV への連絡
+
+作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+`.trim()
+}
+
+// extra.mailbox は label と担当名が一致しない場合の担当名
+function svAgent(prompt, role, label, extra) {
+  const { mailbox, ...rest } = extra || {}
+  const name = mailbox || label.replace(/:/g, '-')
+  return agent(`${prompt}\n\n${mailboxBlock(name)}`, agentOpts(role, label, rest))
+}
 // <<< sv-prelude:core
 
 // ============================================================================
@@ -211,7 +247,7 @@ function roleSection(role, note) {
 // ============================================================================
 
 const { areas, context, completeness_check } = svArgs.wf_specific
-const dir = runDir('sv-investigate')
+const dir = runDir(_WF_NAME)
 const runCompletenessCheck = completeness_check !== false
 
 const _areaNames = areas.map(a => a.name)
@@ -261,7 +297,7 @@ ${outputPath}
 - 最終応答は「調査完了 (${area.name})」の 1 文で良い
 `.trim()
 
-  return agent(prompt, agentOpts('investigator', `investigate:${area.name}`, { agentType: 'general-purpose' }))
+  return svAgent(prompt, 'investigator', `investigate:${area.name}`, { agentType: 'general-purpose', schema: COMPLETION_SCHEMA })
 }))
 
 const validInvestigations = investigations.filter(r => r != null)
@@ -337,7 +373,7 @@ ${critiquePath}
 - 最終応答は「網羅性チェック完了」の 1 文で良い
 `.trim()
 
-  const critique = await agent(critiquePrompt, agentOpts('critique', 'completeness-critic'))
+  const critique = await svAgent(critiquePrompt, 'critique', 'completeness-critic', { schema: COMPLETION_SCHEMA })
   if (critique == null) critiquePath = null
 }
 

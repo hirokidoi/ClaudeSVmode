@@ -187,7 +187,7 @@ export const meta = {
 
 ```javascript
 const { plan_path, selfcheck_path, plan_type, context, prev_plan_path, prev_run_id } = svArgs.wf_specific
-const dir = runDir('sv-review-plan')
+const dir = runDir(_WF_NAME)
 if (prev_run_id != null && <fileNameErrors('args.wf_specific.prev_run_id', prev_run_id) が空でない>) return argsValidationEscalation(<そのエラー>)
 
 phase('セルフチェック確認')
@@ -204,14 +204,14 @@ if (prev_plan_path) {
   resolvedPrevPlanPath = prev_plan_path
   resolvedPrevReviewPath = `${dirname(prev_plan_path)}/plan-review.md`
 } else if (prev_run_id) {
-  const prevAgentsDir = `${svArgs.tmp_base_dir}/wf-sv-review-plan/${prev_run_id}/agents`
+  const prevAgentsDir = `${svArgs.tmp_base_dir}/wf-${_WF_NAME}/${prev_run_id}/agents`
   resolvedPrevPlanPath = `${prevAgentsDir}/plan-snapshot.md`
   resolvedPrevReviewPath = `${prevAgentsDir}/plan-review.md`
 }
 const diffMode = resolvedPrevPlanPath != null
 
 phase('レビュー')
-const review = await agent(buildPlanReviewerPrompt({
+const review = await svAgent(buildPlanReviewerPrompt({
   plan_path,
   plan_type,
   context,
@@ -220,7 +220,7 @@ const review = await agent(buildPlanReviewerPrompt({
   resolvedPrevPlanPath,   // null ならフルモード
   resolvedPrevReviewPath, // 前回指摘解消確認の入力 (読めなければ検証省略)
   dir,
-}), agentOpts('reviewer', `plan-review:${plan_type}${diffMode ? ':diff' : ''}`, { schema: <verdict と md_written> }))
+}), 'reviewer', `plan-review:${plan_type}${diffMode ? ':diff' : ''}`, { schema: <verdict と md_written> })
 
 if (review == null) {
   return {

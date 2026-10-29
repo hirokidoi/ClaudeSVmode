@@ -157,7 +157,7 @@ export const meta = {
 
 ```javascript
 const { design_path, components, run_tests_after, test_commands, test_timing, commit_strategy } = svArgs.wf_specific
-const dir = runDir('sv-implement')
+const dir = runDir(_WF_NAME)
 
 const { steps: testSteps, errors: testCommandErrors } = normalizeTestCommands(test_commands || [])   // 文字列は { command, kind: 'test' }。要素の形の不正をエラーにする
 const wfSpecificErrors = <components の name の重複 + name のファイル名検査 (fileNameErrors) + dependencies に存在しない name + run_tests_after=true なのに test_commands が空> + testCommandErrors
@@ -166,15 +166,15 @@ const testTiming = test_timing || 'post-pipeline'
 const batches = topoSortToBatches(components)   // dependencies を尊重
 
 async function implementComponent(comp) {
-  const impl = await agent(buildImplementerPrompt({ comp, design_path, dir }),
-    agentOpts('implementer', `impl-${comp.name}`, { schema: IMPLEMENTER_SCHEMA }))   // design_mismatch: boolean を必須で返させる
+  const impl = await svAgent(buildImplementerPrompt({ comp, design_path, dir }),
+    'implementer', `impl-${comp.name}`, { schema: IMPLEMENTER_SCHEMA })   // design_mismatch: boolean を必須で返させる
   if (impl == null) return { comp, error: 'impl_failed' }
   if (impl.design_mismatch) return { comp, error: 'design_mismatch', implMdPath: <impl md のパス> }   // 乖離の理由は impl md の判定 JSON。バッチ完了時にエスカレ
 
   let testResult = null
   if (run_tests_after && testTiming === 'per-component') {
-    testResult = await agent(buildTestRunnerPrompt({ testSteps, comp, dir }),
-      agentOpts('test_runner', `test-${comp.name}`, { schema: TEST_RUNNER_SCHEMA }))   // pass: boolean を必須で返させる
+    testResult = await svAgent(buildTestRunnerPrompt({ testSteps, comp, dir }),
+      'test_runner', `test-${comp.name}`, { schema: TEST_RUNNER_SCHEMA })   // pass: boolean を必須で返させる
     if (testResult == null) return { comp, error: 'test_failed', implMdPath: <impl md のパス> }
   }
   return { comp, succeeded: true, testResult, implMdPath: `${dir}/loop/${comp.name}-round-1-impl.md` }
@@ -203,7 +203,7 @@ if (componentResults.some(r => !r.succeeded)) return escalation(..., buildCompon
 let postPipelineTestResult = null
 let postPipelineTestMdPath = null
 if (run_tests_after && testTiming === 'post-pipeline') {
-  postPipelineTestResult = await agent(buildTestRunnerPrompt({ testSteps, dir }), agentOpts('test_runner', 'test-all', { schema: TEST_RUNNER_SCHEMA }))   // pass: boolean を必須で返させる
+  postPipelineTestResult = await svAgent(buildTestRunnerPrompt({ testSteps, dir }), 'test_runner', 'test-all', { schema: TEST_RUNNER_SCHEMA })   // pass: boolean を必須で返させる
   if (postPipelineTestResult == null) return escalation(..., { componentOutputs: buildComponentOutputs() })   // テスト未実施のまま commit に進まない
   postPipelineTestMdPath = `${dir}/agents/test-all.md`
 }
@@ -218,7 +218,7 @@ const componentOutputs = buildComponentOutputs()
 // commit
 let commitMdPath = null
 if (commit_strategy && commit_strategy !== 'none') {
-  const commitResult = await agent(buildCommitPrompt({ componentResults, commit_strategy, dir }), agentOpts('committer', 'commit', { schema: COMMITTER_SCHEMA }))   // pass: boolean を必須で返させる
+  const commitResult = await svAgent(buildCommitPrompt({ componentResults, commit_strategy, dir }), 'committer', 'commit', { schema: COMMITTER_SCHEMA })   // pass: boolean を必須で返させる
   commitMdPath = `${dir}/agents/commit.md`
   if (commitResult == null || !commitResult.pass) return escalation(..., { runDir: dir, componentOutputs, postPipelineTestMdPath, commitMdPath: commitResult == null ? null : commitMdPath })   // 実装は完了、commit 失敗
 }

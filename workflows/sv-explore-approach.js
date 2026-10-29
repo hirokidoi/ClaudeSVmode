@@ -16,6 +16,9 @@ export const meta = {
   },
 }
 
+// 本体からは meta を参照できないため meta.name と同じ値を持つ
+const _WF_NAME = 'sv-explore-approach'
+
 // 本体からは meta を参照できないため同じスキーマを持つ。meta.argsSchema と必ず同期させる
 const _WF_ARGS_SCHEMA = {
   wf_specific: {
@@ -201,6 +204,39 @@ function roleSection(role, note) {
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
+
+// 返り値の形式を持たない担当にも、返り値を提出させるための最小の形式
+const COMPLETION_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+  },
+  required: ['summary'],
+}
+
+function mailboxDir(name) {
+  return `${runDir(_WF_NAME)}/mailbox/${name}`
+}
+
+function mailboxBlock(name) {
+  const dir = mailboxDir(name)
+  return `
+# 連絡帳 (必読)
+- 担当名: ${name}
+- 連絡帳のフォルダ: ${dir}
+  - inbox.md: SV から担当への連絡
+  - outbox.md: 担当から SV への連絡
+
+作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+`.trim()
+}
+
+// extra.mailbox は label と担当名が一致しない場合の担当名
+function svAgent(prompt, role, label, extra) {
+  const { mailbox, ...rest } = extra || {}
+  const name = mailbox || label.replace(/:/g, '-')
+  return agent(`${prompt}\n\n${mailboxBlock(name)}`, agentOpts(role, label, rest))
+}
 // <<< sv-prelude:core
 
 // ============================================================================
@@ -208,7 +244,7 @@ function roleSection(role, note) {
 // ============================================================================
 
 const { goal, constraints, perspectives, background } = svArgs.wf_specific
-const dir = runDir('sv-explore-approach')
+const dir = runDir(_WF_NAME)
 const activePerspectives = perspectives && perspectives.length ? perspectives : ['mvp', 'risk', 'scalability', 'user-experience']
 const _dupPerspectives = activePerspectives.filter((x, i) => activePerspectives.indexOf(x) !== i)
 const _perspectiveErrors = []
@@ -282,7 +318,7 @@ ${outputPath}
 - 最終応答は「提案完了 (${p})」の 1 文で良い
 `.trim()
 
-  return agent(prompt, agentOpts('designer', `propose:${p}`))
+  return svAgent(prompt, 'designer', `propose:${p}`, { schema: COMPLETION_SCHEMA })
 }))
 
 const validProposals = proposals.filter(r => r != null)
@@ -365,7 +401,7 @@ substantive: 提案が具体的なアプローチになっておらず、要望�
 - 最終応答は「審査完了 (${p})」の 1 文で良い
 `.trim()
 
-  return agent(prompt, agentOpts('judge', `judge:${p}`))
+  return svAgent(prompt, 'judge', `judge:${p}`, { schema: COMPLETION_SCHEMA })
 }))
 
 // SV は proposalMdPaths の各 md を Read して比較表を作成する

@@ -139,7 +139,7 @@ export const meta = {
 
 ```javascript
 const { change_scope, selfcheck_path, spec_paths, documentation_paths, test_paths, review_lenses, optimize_for } = svArgs.wf_specific
-const dir = runDir('sv-comprehensive-review')
+const dir = runDir(_WF_NAME)
 
 const lenses = review_lenses && review_lenses.length ? review_lenses : ['correctness', 'docs', 'policy']
 if (<lenses に重複>) return argsValidationEscalation([<重複した観点>])
@@ -153,13 +153,13 @@ phase('レビュー')
 
 if (optimizeFor === 'tokens') {
   const outputPath = `${dir}/agents/review.md`
-  const review = await agent(buildComprehensiveReviewerPrompt({ lenses, change_scope, spec_paths, documentation_paths, test_paths, outputPath }), agentOpts('reviewer', 'review', { schema: <overall_pass と md_written と upstream_precondition_failed> }))
+  const review = await svAgent(buildComprehensiveReviewerPrompt({ lenses, change_scope, spec_paths, documentation_paths, test_paths, outputPath }), 'reviewer', 'review', { schema: <overall_pass と md_written と upstream_precondition_failed> })
   if (review == null || review.md_written !== true) return { status: 'escalation', summary: 'レビュー実行失敗', escalation: {...}, runDir: dir }
   return { status: 'success', summary: `総合レビュー完了 (${lenses.length} 観点, optimize_for=tokens, overall_pass=...)`, outputPath }
 }
 
 const reviews = await parallel(lenses.map(lens => () =>
-  agent(buildLensReviewerPrompt({ lens, change_scope, focusFiles: lensFocusFiles[lens], spec_paths, documentation_paths, test_paths, outputPath: `${dir}/agents/review-${lens}.md` }), agentOpts('reviewer', `review:${lens}`, { schema: <pass と md_written と upstream_precondition_failed> }))
+  svAgent(buildLensReviewerPrompt({ lens, change_scope, focusFiles: lensFocusFiles[lens], spec_paths, documentation_paths, test_paths, outputPath: `${dir}/agents/review-${lens}.md` }), 'reviewer', `review:${lens}`, { schema: <pass と md_written と upstream_precondition_failed> })
 ))
 const lensMdPaths = lenses.map((lens, i) => ({ lens, mdPath: `${dir}/agents/review-${lens}.md`, succeeded: reviews[i] != null && reviews[i].md_written === true }))
 const failedLenses = lensMdPaths.filter(p => !p.succeeded).map(p => p.lens)

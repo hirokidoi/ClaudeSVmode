@@ -21,6 +21,9 @@ export const meta = {
   },
 }
 
+// 本体からは meta を参照できないため meta.name と同じ値を持つ
+const _WF_NAME = 'sv-review-changes'
+
 // 本体からは meta を参照できないため同じスキーマを持つ。meta.argsSchema と必ず同期させる
 const _WF_ARGS_SCHEMA = {
   wf_specific: {
@@ -209,6 +212,39 @@ function roleSection(role, note) {
 - ${KIT_DIR}/roles/${role}.md
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
+}
+
+// 返り値の形式を持たない担当にも、返り値を提出させるための最小の形式
+const COMPLETION_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+  },
+  required: ['summary'],
+}
+
+function mailboxDir(name) {
+  return `${runDir(_WF_NAME)}/mailbox/${name}`
+}
+
+function mailboxBlock(name) {
+  const dir = mailboxDir(name)
+  return `
+# 連絡帳 (必読)
+- 担当名: ${name}
+- 連絡帳のフォルダ: ${dir}
+  - inbox.md: SV から担当への連絡
+  - outbox.md: 担当から SV への連絡
+
+作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+`.trim()
+}
+
+// extra.mailbox は label と担当名が一致しない場合の担当名
+function svAgent(prompt, role, label, extra) {
+  const { mailbox, ...rest } = extra || {}
+  const name = mailbox || label.replace(/:/g, '-')
+  return agent(`${prompt}\n\n${mailboxBlock(name)}`, agentOpts(role, label, rest))
 }
 // <<< sv-prelude:core
 
@@ -430,7 +466,7 @@ performed と、判定理由 (1〜2 文) を返す
 
 const { change_scope, selfcheck_path, context, focus_areas } = svArgs.wf_specific
 const changedFiles = change_scope.files
-const dir = runDir('sv-review-changes')
+const dir = runDir(_WF_NAME)
 
 phase('セルフチェック確認')
 
@@ -488,7 +524,7 @@ md を保存した後、Read で存在を確認してから StructuredOutput で
 pass と upstream_precondition_failed は md の判定 JSON と一致させてください。
 `.trim()
 
-const review = await agent(reviewPrompt, agentOpts('reviewer', 'code-review', { schema: REVIEW_RESULT_SCHEMA }))
+const review = await svAgent(reviewPrompt, 'reviewer', 'code-review', { schema: REVIEW_RESULT_SCHEMA })
 
 if (review == null) {
   return {

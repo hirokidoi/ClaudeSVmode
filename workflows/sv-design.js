@@ -18,6 +18,9 @@ export const meta = {
   },
 }
 
+// 本体からは meta を参照できないため meta.name と同じ値を持つ
+const _WF_NAME = 'sv-design'
+
 // 本体からは meta を参照できないため同じスキーマを持つ。meta.argsSchema と必ず同期させる
 const _WF_ARGS_SCHEMA = {
   wf_specific: {
@@ -204,6 +207,39 @@ function roleSection(role, note) {
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
+
+// 返り値の形式を持たない担当にも、返り値を提出させるための最小の形式
+const COMPLETION_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+  },
+  required: ['summary'],
+}
+
+function mailboxDir(name) {
+  return `${runDir(_WF_NAME)}/mailbox/${name}`
+}
+
+function mailboxBlock(name) {
+  const dir = mailboxDir(name)
+  return `
+# 連絡帳 (必読)
+- 担当名: ${name}
+- 連絡帳のフォルダ: ${dir}
+  - inbox.md: SV から担当への連絡
+  - outbox.md: 担当から SV への連絡
+
+作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+`.trim()
+}
+
+// extra.mailbox は label と担当名が一致しない場合の担当名
+function svAgent(prompt, role, label, extra) {
+  const { mailbox, ...rest } = extra || {}
+  const name = mailbox || label.replace(/:/g, '-')
+  return agent(`${prompt}\n\n${mailboxBlock(name)}`, agentOpts(role, label, rest))
+}
 // <<< sv-prelude:core
 
 const MAX_REVISION_LOOP = 3
@@ -324,7 +360,7 @@ const {
   scope,
   design_style_preference,
 } = svArgs.wf_specific
-const dir = runDir('sv-design')
+const dir = runDir(_WF_NAME)
 const style = design_style_preference || 'conservative'
 
 async function designerAgent(round, feedback, previousDesignPath) {
@@ -383,7 +419,7 @@ schema フィールド:
 - design_precondition_failed: bool
 - design_precondition_reason: string
 `.trim()
-    return agent(incrementalPrompt, agentOpts('designer', label, { schema: DESIGNER_SCHEMA, agentType: 'general-purpose' }))
+    return svAgent(incrementalPrompt, 'designer', label, { schema: DESIGNER_SCHEMA, agentType: 'general-purpose', mailbox: 'design' })
   }
 
   const prompt = `
@@ -465,7 +501,7 @@ schema フィールド:
 - design_precondition_reason: string
 `.trim()
 
-  return agent(prompt, agentOpts('designer', label, { schema: DESIGNER_SCHEMA, agentType: 'general-purpose' }))
+  return svAgent(prompt, 'designer', label, { schema: DESIGNER_SCHEMA, agentType: 'general-purpose', mailbox: 'design' })
 }
 
 // round 1 はフル監査。round 2 以降は前ラウンドとの diff を取り、指摘の解消確認に絞る
@@ -646,7 +682,7 @@ ${FINDINGS_PLACEMENT_RULE}
 `.trim()
 
   const schema = round === 1 ? REVIEWER_R1_SCHEMA : REVIEWER_R2_SCHEMA
-  return agent(prompt, agentOpts('reviewer', `review-r${round}`, { schema, agentType: 'general-purpose' }))
+  return svAgent(prompt, 'reviewer', `review-r${round}`, { schema, agentType: 'general-purpose', mailbox: 'review' })
 }
 
 function reviewMdPathsUpTo(n) {

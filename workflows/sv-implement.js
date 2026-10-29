@@ -24,6 +24,9 @@ export const meta = {
   },
 }
 
+// 本体からは meta を参照できないため meta.name と同じ値を持つ
+const _WF_NAME = 'sv-implement'
+
 // 本体からは meta を参照できないため同じスキーマを持つ。meta.argsSchema と必ず同期させる
 const _WF_ARGS_SCHEMA = {
   wf_specific: {
@@ -211,6 +214,39 @@ function roleSection(role, note) {
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
+
+// 返り値の形式を持たない担当にも、返り値を提出させるための最小の形式
+const COMPLETION_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+  },
+  required: ['summary'],
+}
+
+function mailboxDir(name) {
+  return `${runDir(_WF_NAME)}/mailbox/${name}`
+}
+
+function mailboxBlock(name) {
+  const dir = mailboxDir(name)
+  return `
+# 連絡帳 (必読)
+- 担当名: ${name}
+- 連絡帳のフォルダ: ${dir}
+  - inbox.md: SV から担当への連絡
+  - outbox.md: 担当から SV への連絡
+
+作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+`.trim()
+}
+
+// extra.mailbox は label と担当名が一致しない場合の担当名
+function svAgent(prompt, role, label, extra) {
+  const { mailbox, ...rest } = extra || {}
+  const name = mailbox || label.replace(/:/g, '-')
+  return agent(`${prompt}\n\n${mailboxBlock(name)}`, agentOpts(role, label, rest))
+}
 // <<< sv-prelude:core
 
 // トポロジカルソートで dependencies を尊重した batch を作る
@@ -276,7 +312,7 @@ const {
   test_timing,
   commit_strategy,
 } = svArgs.wf_specific
-const dir = runDir('sv-implement')
+const dir = runDir(_WF_NAME)
 const testTiming = test_timing || 'post-pipeline'
 
 const _compNames = components.map(c => c.name)
@@ -395,7 +431,7 @@ ${outputPath}
 最終応答テキストを返す前に、**必ず StructuredOutput ツール**を呼び出して判定オブジェクト (design_mismatch: bool) を返してください。md 内の判定 JSON と必ず一致させること。乖離の理由は md の判定 JSON の design_mismatch_reason に書くこと。
 `.trim()
 
-  return agent(prompt, agentOpts('implementer', label, { schema: IMPLEMENTER_SCHEMA }))
+  return svAgent(prompt, 'implementer', label, { schema: IMPLEMENTER_SCHEMA })
 }
 
 async function testRunnerAgent(scope) {
@@ -458,7 +494,7 @@ ${outputPath}
 最終応答テキストを返す前に、**必ず StructuredOutput ツール**を呼び出して判定オブジェクト (pass: bool、failed_tests: string の配列、not_run_steps: 未実行の手順の番号の配列) を返してください。md 内の判定 JSON と必ず一致させること。pass は全手順が実行されて成功したときだけ true とし、実行できなかった手順があれば pass=false とする。
 `.trim()
 
-  return agent(prompt, agentOpts('test_runner', label, { schema: TEST_RUNNER_SCHEMA }))
+  return svAgent(prompt, 'test_runner', label, { schema: TEST_RUNNER_SCHEMA })
 }
 
 async function implementComponent(comp) {
@@ -639,7 +675,7 @@ ${componentResults.map(r => `- ${r.comp.name}: files=${(r.comp.files || []).join
 最終応答テキストを返す前に、**必ず StructuredOutput ツール**を呼び出して判定オブジェクト (pass: bool、commit_count: number) を返してください。md 内の判定 JSON と必ず一致させること。
 `.trim()
 
-  const commitResult = await agent(commitPrompt, agentOpts('committer', 'commit', { schema: COMMITTER_SCHEMA }))
+  const commitResult = await svAgent(commitPrompt, 'committer', 'commit', { schema: COMMITTER_SCHEMA })
   commitMdPath = `${dir}/agents/commit.md`
   if (commitResult == null || !commitResult.pass) {
     return {

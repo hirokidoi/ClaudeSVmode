@@ -119,20 +119,20 @@ export const meta = {
 
 ```javascript
 const { change_scope, selfcheck_path, context, focus_areas } = svArgs.wf_specific
-const dir = runDir('sv-review-changes')
+const dir = runDir(_WF_NAME)
 
 phase('セルフチェック確認')
 const gateResult = await runSelfcheckGate(selfcheck_path, <レビュー対象の概要>)
 if (gateResult) return gateResult   // 不備なら rejected、確認担当の失敗なら escalation
 
 phase('レビュー')
-const review = await agent(buildChangeReviewerPrompt({
+const review = await svAgent(buildChangeReviewerPrompt({
   change_scope,
   context,
   focus_areas,
   project_memory_path: svArgs.project_memory_path,
   dir,
-}), agentOpts('reviewer', 'code-review', { schema: REVIEW_RESULT_SCHEMA }))
+}), 'reviewer', 'code-review', { schema: REVIEW_RESULT_SCHEMA })
 
 if (review == null) {
   return {

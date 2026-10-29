@@ -74,6 +74,11 @@ for file in "$dir"/sv-*.js; do
   if sed '/^\/\/ >>> sv-prelude:/,/^\/\/ <<< sv-prelude:/d' "$file" | grep -q 'SV workflow prelude'; then
     fail "$base.js" "-" "目印の外に prelude の見出しコメントが残っている"
   fi
+  meta_name=$(sed -n "s/^  name: '\([^']*\)',\$/\1/p" "$file" | head -n 1)
+  wf_name=$(sed -n "s/^const _WF_NAME = '\([^']*\)'\$/\1/p" "$file")
+  if [ -z "$meta_name" ] || [ "$meta_name" != "$wf_name" ]; then
+    fail "$base.js" "-" "_WF_NAME が meta.name と一致しない (meta.name: ${meta_name:-なし} / _WF_NAME: ${wf_name:-なし})"
+  fi
 done
 
 if [ "$errors" -gt 0 ]; then

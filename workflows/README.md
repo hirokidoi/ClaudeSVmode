@@ -100,7 +100,7 @@ SV は返り値の path 群を Read して総括する。`status` の意味と `
 
 ## 共通ヘルパ (Prelude)
 
-Workflow スクリプトは他ファイルを import できないため、共通ヘルパは各 script 冒頭に重複記述する。ヘルパの正本は `_prelude.js.md` (参照用) を参照。レビュー系 wf がコピーする共有ヘルパ (レビュー観点カタログ・コード diff レビュー用ヘルパ・セルフチェック確認) も正本は同ファイル。正本と複製の一致は `check-prelude.sh` で確かめる。
+Workflow スクリプトは他ファイルを import できないため、共通ヘルパは各 script 冒頭に重複記述する。ヘルパの正本は `_prelude.js.md` (参照用) を参照。レビュー系 wf がコピーする共有ヘルパ (レビュー観点カタログ・コード diff レビュー用ヘルパ・セルフチェック確認) も正本は同ファイル。正本と複製の一致は `check-prelude.sh` で確かめる。担当の起動は prelude の `svAgent` を通し、担当ごとの連絡帳の場所を渡す。
 
 ## 出力先
 
@@ -109,5 +109,6 @@ Workflow スクリプトは他ファイルを import できないため、共通
 各 run ディレクトリ配下:
 - `agents/`: 中間エージェントの成果物 (最終レビュー md はここに置かれる)
 - `loop/`: 修正ループの記録 (round-N-output.md / round-N-review.md)
+- `mailbox/`: 担当ごとの連絡帳 (使い方は USAGE.md「連絡帳」)
 
 SV は返り値中の path (`outputPath` / `componentOutputs` / `lensMdPaths` 等) を Read して総括する。

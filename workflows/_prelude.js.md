@@ -181,6 +181,39 @@ function roleSection(role, note) {
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
+
+// 返り値の形式を持たない担当にも、返り値を提出させるための最小の形式
+const COMPLETION_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+  },
+  required: ['summary'],
+}
+
+function mailboxDir(name) {
+  return `${runDir(_WF_NAME)}/mailbox/${name}`
+}
+
+function mailboxBlock(name) {
+  const dir = mailboxDir(name)
+  return `
+# 連絡帳 (必読)
+- 担当名: ${name}
+- 連絡帳のフォルダ: ${dir}
+  - inbox.md: SV から担当への連絡
+  - outbox.md: 担当から SV への連絡
+
+作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+`.trim()
+}
+
+// extra.mailbox は label と担当名が一致しない場合の担当名
+function svAgent(prompt, role, label, extra) {
+  const { mailbox, ...rest } = extra || {}
+  const name = mailbox || label.replace(/:/g, '-')
+  return agent(`${prompt}\n\n${mailboxBlock(name)}`, agentOpts(role, label, rest))
+}
 // <<< sv-prelude:core
 ```
 
@@ -422,7 +455,7 @@ performed と、判定理由 (1〜2 文) を返す
 
 ## 使用方法
 
-1. 「Prelude」のコードブロックを丸ごと、`sv-*.js` の `export const meta = {...}` と、それと同じ内容の `_WF_ARGS_SCHEMA` の直後にペースト (全 wf 共通)
+1. 「Prelude」のコードブロックを丸ごと、`sv-*.js` の `export const meta = {...}` と、それと同じ内容の `_WF_NAME` (meta.name と同じ値) および `_WF_ARGS_SCHEMA` の直後にペースト (全 wf 共通)
 2. レビュー系 wf は次の順で続けてコピーする (使う節だけ):
    - 「レビュー観点カタログ」: sv-design / sv-prototype-ui / sv-review-plan / sv-review-changes / sv-comprehensive-review
    - 「コード diff レビュー用ヘルパ」: sv-review-changes / sv-comprehensive-review

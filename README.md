@@ -32,7 +32,8 @@ Claude Code で、ちょっと大きめの作業をチームっぽく進める�
 1. **配置**：`sv-mode.md` と `workflows`・`roles`・`stacks` を `~/.claude/` の下にコピーする
 2. **CLAUDE.md への書き足し**：`CLAUDE.snippet.md` の内容を `~/.claude/CLAUDE.md` に足す
 3. **許可設定**：`settings.snippet.json` の許可ルールを `~/.claude/settings.json` に足す
-4. **確認**：Claude Code を再起動し、小さなプロジェクトで試運転する
+4. **フック設定**：`settings.snippet.json` のフックを `~/.claude/settings.json` に足す（連絡帳を使う場合）
+5. **確認**：Claude Code を再起動し、小さなプロジェクトで試運転する
 
 ---
 
@@ -42,6 +43,9 @@ Claude Code で、ちょっと大きめの作業をチームっぽく進める�
 - 承諾すると対話フェーズに入る。SV の質問と推奨案に答えて、やること・やらないこと・止まる場所を決める
 - 「🟢 自律進行できます」と出たら、内容を確かめて OK と返す。あとは完了（またはチェックポイント）まで SV が進める
 - 進行中の wf は `/workflows` で確認できる。途中で別件の質問や軽い修正を頼めば、SV がその場で対応する
+- wf の実行中も、SV に頼めば担当に追加の指示を届けられる（連絡帳）
+
+更新するときは [UPDATING.md](UPDATING.md) を参照。
 
 進め方のルールは [sv-mode.md](sv-mode.md)、wf の仕組みと一覧は [workflows/README.md](workflows/README.md)、スタックパックの作り方は [stacks/README.md](stacks/README.md) を参照。
 
