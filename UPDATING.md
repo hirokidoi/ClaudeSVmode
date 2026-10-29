@@ -12,6 +12,8 @@ cat ~/.claude/workflows/VERSION
 
 ## 取り込み方
 
+1.2.0 以降、自分用の規則は利用者の追記 (`INSTALL.md` の「利用者の追記」) に置ける。キットのファイルに手を入れず追記だけで済ませていれば、「手を入れていない場合」の手順で更新できる。
+
 ### 手を入れていない場合
 
 `INSTALL.md` の「配置」と同じコマンドで上書きする。そのあと、下の「版ごとの変更」のうち、手元の版より新しく、新しい版までのすべての版について、「無くなったファイル」の項にあるものを `~/.claude` から消し、「設定」の項を `~/.claude/settings.json` と `~/.claude/CLAUDE.md` に足す。
@@ -24,6 +26,7 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
 ~/.claude に配置している SV モードキットを、v<手元の版> から v<新しい版> に更新してください。
 キットのリポジトリは今のフォルダです。旧版と新版は git のタグ v<手元の版> と v<新しい版> を使います。INSTALL.md と UPDATING.md は v<新しい版> のものを読みます。
 対象は INSTALL.md の「配置」の表にあるもの (sv-mode.md と workflows・roles・stacks の下) だけです。リポジトリでのパスが、そのまま ~/.claude の下のパスになります。
+~/.claude/sv-mode.local.md と ~/.claude/roles/local/ は私のファイルです。変更・削除しないでください。
 
 1. 旧版から新版までの、対象の変更ファイルの一覧を作り、書き換える前に私に見せて承諾を得てください。
 2. 新版で増えたファイルは、そのまま ~/.claude にコピーしてください。ただし手元に同じ名前のファイルがあれば、上書きせずに私に見せてください。
@@ -51,6 +54,31 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
 ## 版ごとの変更
 
 新しい版を上に並べる。
+
+### 1.2.0
+
+利用者の追記 (SV のアドオン・ロールの追記) の読み込みと、sv-investigate の深掘りの追加。
+
+- 増えたファイル: なし (利用者が作るファイルはキットに含まれない)
+- 変わったファイル (手を入れていればマージ)
+  - `workflows/_prelude.js.md` と `workflows/sv-*.js` 8 本: 担当がロール定義の後に利用者の追記を読む。追記ファイルや連絡帳が無いことを成果物に書かない
+  - `workflows/mailbox/rules.md`: 連絡帳のファイルが無いことを成果物に書かない
+  - `workflows/sv-investigate.js`: 上に加えて、深掘りの引数 `deep_dive` と、網羅性チェックの返り値の形式、返り値の `deferredAreas`・`areaMdPaths[].followup`
+  - `workflows/USAGE.md`・`workflows/README.md`: sv-investigate の深掘りと、ロール節の説明
+  - `workflows/design-docs/_common.md`・`workflows/design-docs/sv-investigate.md`: 同上と設計判断
+  - `workflows/VERSION`
+  - `sv-mode.md`: アドオンの優先と、wf カタログの sv-investigate
+  - `stacks/README.md`: 担当の読み方と優先順位
+- 無くなったファイル: なし
+- 配置しない文書の変更
+  - `INSTALL.md`・`README.md`・`UPDATING.md`: 利用者の追記の案内
+- 配置しないその他のファイルの変更
+  - `.gitignore`: 利用者の追記ファイルを無視
+- 設定
+  - `settings.json` への追加はない (追記の Read は `Read(~/.claude/roles/**)` に含まれる)
+  - `CLAUDE.md` への追加はない。アドオンを使う場合だけ、取り込みの行を足す (`INSTALL.md` の「利用者の追記」)
+- roles は変わらない
+- 使い方の変化: sv-investigate の網羅性チェックの md の判定 JSON の形が変わった (`additional_areas_recommended` → `followup_areas`・`confirmation_areas`)。md を読む手順を自分で書いている場合は合わせる
 
 ### 1.1.0
 

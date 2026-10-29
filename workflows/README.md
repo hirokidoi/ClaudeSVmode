@@ -48,7 +48,7 @@ SV モードは、以下の課題を **決定的なスクリプト** に落と�
 
 | wf 名 | 目的 |
 |---|---|
-| `sv-investigate` | 曖昧な要望・特定領域の状態把握 (並列 fan-out) |
+| `sv-investigate` | 曖昧な要望・特定領域の状態把握 (並列 fan-out、任意で 1 回の深掘り) |
 | `sv-explore-approach` | 仕様確定前のアプローチ比較 (Judge panel) |
 | `sv-prototype-ui` | HTML プロトタイプ制作 + デザインレビュー |
 | `sv-design` | 要件から設計 + 独立レビュー + 修正ループ |
@@ -100,7 +100,7 @@ SV は返り値の path 群を Read して総括する。`status` の意味と `
 
 ## 共通ヘルパ (Prelude)
 
-Workflow スクリプトは他ファイルを import できないため、共通ヘルパは各 script 冒頭に重複記述する。ヘルパの正本は `_prelude.js.md` (参照用) を参照。レビュー系 wf がコピーする共有ヘルパ (レビュー観点カタログ・コード diff レビュー用ヘルパ・セルフチェック確認) も正本は同ファイル。正本と複製の一致は `check-prelude.sh` で確かめる。担当の起動は prelude の `svAgent` を通し、担当ごとの連絡帳の場所を渡す。
+Workflow スクリプトは他ファイルを import できないため、共通ヘルパは各 script 冒頭に重複記述する。ヘルパの正本は `_prelude.js.md` (参照用) を参照。レビュー系 wf がコピーする共有ヘルパ (レビュー観点カタログ・コード diff レビュー用ヘルパ・セルフチェック確認) も正本は同ファイル。正本と複製の一致は `check-prelude.sh` で確かめる。担当のロール節 (`roleSection`) は、ロール定義・利用者の追記 (`roles/local/`)・スタックパックを読ませる。担当の起動は prelude の `svAgent` を通し、担当ごとの連絡帳の場所を渡す。
 
 ## 出力先
 

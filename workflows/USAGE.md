@@ -39,7 +39,7 @@ Workflow({
 - 複数 md を返す wf は wf 固有キーで path 配列を返す:
   - `sv-implement`: `componentOutputs: [{name, succeeded, implMdPath, perComponentTestMdPath, error}]` と `postPipelineTestMdPath`、`commitMdPath` (commit_strategy='none'、または commit 担当が null を返したときは null)。コンポーネントの失敗・テスト失敗・テスト未実施・commit 失敗の escalation でも `componentOutputs` を返す。`design_mismatch` のコンポーネントは `implMdPath` の md に乖離の理由がある
   - `sv-comprehensive-review`: 既定 (`optimize_for: 'wall_clock'`) は観点ごとの md を `lensMdPaths: [{lens, mdPath, succeeded}]` で返す (`succeeded: false` はレビュー担当が失敗した観点で、md が無いか不完全。失敗した観点は summary にも出る)。`optimize_for: 'tokens'` のときは単一 agent が全観点を 1 md にまとめ `outputPath` で返す
-  - `sv-investigate`: `areaMdPaths: [{area, mdPath, succeeded}]` と `critiquePath` (`succeeded: false` は調査担当が失敗した領域。`critiquePath` は網羅性チェックを回さなかった・クリティックが失敗したときは `null`。失敗した領域は summary にも出る)
+  - `sv-investigate`: `areaMdPaths: [{area, mdPath, succeeded, followup}]` と `critiquePath`、`deferredAreas: [{name, scope, questions, reason, deferral}]` (`succeeded: false` は調査担当が失敗した領域で、summary にも出る。`followup: true` は深掘りで追加した領域。`critiquePath` と `deferredAreas` は網羅性チェックを回さなかった・クリティックが失敗したときは `null`。`deferredAreas` はこの run で調べなかった推奨で、`deferral` は理由を表す。`needs_user_confirmation` はユーザに確かめてから追加の `sv-investigate` を起動する。`deep_dive_disabled` / `over_limit` / `invalid_name` は SV が追加起動を判断する (`invalid_name` は名前を付け直す))
   - `sv-explore-approach`: `proposalMdPaths: [{perspective, proposalMdPath, judgeMdPath, succeeded}]` (`succeeded: false` は提案の生成に失敗した観点。`judgeMdPath` は提案の生成か審査が失敗した観点では `null`)
   - `sv-prototype-ui`: `prototypeDir` と `reviewMdPaths: [...]`
 - 担当エージェントの起動後の escalation では、その時点で存在する成果物の path キー (`outputPath` / `reviewMdPaths` / `prototypeDir` / `lensMdPaths` / `componentOutputs` 等) と `runDir` が返る。args 検証とセルフチェック確認の escalation は成果物が無いため返さない
@@ -61,7 +61,7 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 | `sv-review-changes` | `pass` | `upstream_precondition_failed`、`change_size_too_large` (情報のみ。総合レビューの検討材料) |
 | `sv-comprehensive-review` | 既定は観点ごとの `pass`、`optimize_for: 'tokens'` は `overall_pass` | 観点ごと (`optimize_for: 'tokens'` は全体で 1 つ) の `upstream_precondition_failed` |
 | `sv-review-plan` | `verdict` (`NG` / `conditional-pass` は不合格、`pass` が合格) | `upstream_precondition_failed` / `plan_path_unreadable` / `plan_type_mismatch` |
-| `sv-investigate` | 合否なし | クリティックの `access_blocker` |
+| `sv-investigate` | 合否なし | クリティックの `access_blocker`、`deferredAreas` の `needs_user_confirmation` |
 | `sv-explore-approach` | 合否なし (3 軸スコア) | 提案担当の `precondition_failed`、提案担当の `constraints_unmet` と審査担当の `substantive` (後者 2 つは情報のみ) |
 
 判定 JSON の詳細は各 wf の成果物 md と `design-docs/` の各設計書 §3 を正とする。
@@ -111,7 +111,7 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 
 | 役割キー | 既定 | 制御する担当 |
 |---|---|---|
-| `investigator` | `sonnet` | `sv-investigate` の調査担当 |
+| `investigator` | `sonnet` | `sv-investigate` の調査担当 (深掘りを含む) |
 | `critique` | セッションのモデル | `sv-investigate` の網羅性チェック |
 | `designer` | セッションのモデル | `sv-design` の設計担当、`sv-explore-approach` の提案担当 |
 | `judge` | セッションのモデル | `sv-explore-approach` の審査担当 |
@@ -137,7 +137,8 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 |---|---|---|---|
 | `areas` | array | ○ | 調査対象領域の配列。各要素は `{ name, scope, questions }` (name・scope は必須、name は重複不可でファイル名になる値 (上記)) |
 | `context` | string | 任意 | 全領域共通の背景情報 |
-| `completeness_check` | boolean | 任意 | 網羅性チェックを回すか（既定 `true`）。**調査範囲がユーザ決定で閉じているときは `false`** — 「抜けている領域はないか」は範囲を開け直す開いた問いで、追加調査の圧力を生む。`false` のとき返り値の `critiquePath` は `null`。アクセス不能領域は各領域の md が同名の節を必ず持つのでそちらから拾う |
+| `completeness_check` | boolean | 任意 | 網羅性チェックを回すか（既定 `true`）。**調査範囲がユーザ決定で閉じているときは `false`** — 「抜けている領域はないか」は範囲を開け直す開いた問いで、追加調査の圧力を生む。`false` のとき返り値の `critiquePath` と `deferredAreas` は `null`。アクセス不能領域は各領域の md が同名の節を必ず持つのでそちらから拾う |
+| `deep_dive` | boolean | 任意 | 網羅性チェックが調査の範囲内とした推奨領域を、1 回だけ追加で調べるか（既定 `false`）。調べる領域数には上限があり、超えた分は `deferredAreas` に回る。ユーザ確認が要る推奨は調べない。`completeness_check: false` と併用すると `args 構造不足`。使いどころ: 調査の目的は決まっているが、どこまで読めば答えが出るかが事前に分からないとき |
 
 ### `sv-explore-approach` — 仕様確定前のアプローチ比較
 

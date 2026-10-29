@@ -5,6 +5,7 @@ export const meta = {
   phases: [
     { title: '調査' },
     { title: '網羅性チェック' },
+    { title: '深掘り' },
   ],
   argsSchema: {
     wf_specific: {
@@ -16,6 +17,7 @@ export const meta = {
       },
       context: { type: 'string', required: false, description: '全領域共通の背景情報' },
       completeness_check: { type: 'boolean', required: false, description: '網羅性チェックを回すか (既定 true)。調査範囲がユーザ決定で閉じている場合は false' },
+      deep_dive: { type: 'boolean', required: false, description: '網羅性チェックが調査の範囲内とした推奨領域を、1 回だけ追加で調べるか (既定 false)。completeness_check=false とは併用不可' },
     },
   },
 }
@@ -29,6 +31,7 @@ const _WF_ARGS_SCHEMA = {
     areas: { type: 'array', required: true, items: { type: 'object', properties: { name: { type: 'string', required: true }, scope: { type: 'string', required: true }, questions: { type: 'array', required: false, items: { type: 'string' } } } } },
     context: { type: 'string', required: false },
     completeness_check: { type: 'boolean', required: false },
+    deep_dive: { type: 'boolean', required: false },
   },
 }
 
@@ -193,7 +196,7 @@ function stackPackBlock(reader) {
 1. ${KIT_DIR}/stacks/<スタック名>/index.md を Read する
 2. index.md の「読むファイル」の表のうち、読み手が ${reader} の行のファイルを、index.md と同じディレクトリから Read する。条件が付いた行は、条件の目印を対象のプロジェクトで確かめ、当てはまるときだけ読む
 
-パックはロール定義を補う知識です。ロール定義や本プロンプトの指定と食い違うときは、そちらに従ってください。
+パックはロール定義を補う知識です。ロール定義・利用者の追記・本プロンプトの指定と食い違うときは、そちらに従ってください。
 index.md が存在しないスタックは読まずに続け、成果物に「スタックパック未配置: <スタック名>」と書いてください。
 `.trim()
 }
@@ -204,6 +207,12 @@ function roleSection(role, note) {
 # ロール定義 (必読)
 以下ファイルを Read で全文読み、指示を全て守ってください。出力形式は本プロンプトの指定を正とします:
 - ${KIT_DIR}/roles/${role}.md
+
+続けて、利用者の追記を次の順に Read してください。無いのが通常の状態なので、無いファイルは飛ばし、読めなかったことは成果物のどこ (アクセス不能領域を含む) にも書きません:
+1. ${KIT_DIR}/roles/local/_all.md
+2. ${KIT_DIR}/roles/local/${role}.md
+
+追記はロール定義に優先し、2 つが食い違うときは 2 に従ってください。本プロンプトの指定は追記にも優先します。
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
@@ -230,7 +239,7 @@ function mailboxBlock(name) {
   - inbox.md: SV から担当への連絡
   - outbox.md: 担当から SV への連絡
 
-作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+作業を始める前に、inbox.md と outbox.md を Read してください。無いのが通常の状態なので、無いファイルは飛ばし、読めなかったことは成果物のどこ (アクセス不能領域を含む) にも書きません。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
 `.trim()
 }
 
@@ -246,9 +255,12 @@ function svAgent(prompt, role, label, extra) {
 // Main
 // ============================================================================
 
-const { areas, context, completeness_check } = svArgs.wf_specific
+const { areas, context, completeness_check, deep_dive } = svArgs.wf_specific
 const dir = runDir(_WF_NAME)
 const runCompletenessCheck = completeness_check !== false
+const runDeepDive = deep_dive === true
+
+const MAX_FOLLOWUP_AREAS = 3  // 設計値
 
 const _areaNames = areas.map(a => a.name)
 const _dupAreaNames = _areaNames.filter((n, i) => _areaNames.indexOf(n) !== i)
@@ -257,15 +269,28 @@ if (_dupAreaNames.length > 0) {
   _areaErrors.push(`args.wf_specific.areas の name が重複: ${[...new Set(_dupAreaNames)].join(', ')}`)
 }
 areas.forEach((a, i) => _areaErrors.push(...fileNameErrors(`args.wf_specific.areas[${i}].name`, a.name)))
+if (runDeepDive && !runCompletenessCheck) {
+  _areaErrors.push('args.wf_specific.deep_dive=true は completeness_check=false と併用できない (深掘りは網羅性チェックの推奨を起点にする)')
+}
 if (_areaErrors.length > 0) {
   return argsValidationEscalation(_areaErrors)
 }
 
-phase('調査')
+function areaMdPath(name) {
+  return `${dir}/agents/investigator-${name}.md`
+}
 
-const investigations = await parallel(areas.map(area => () => {
-  const outputPath = `${dir}/agents/investigator-${area.name}.md`
-  const prompt = `
+function investigatorPrompt(area, origin) {
+  const outputPath = areaMdPath(area.name)
+  const originSection = origin ? `
+# 追加の調査の経緯
+網羅性チェックの推奨で追加した領域です。推奨の理由: ${area.reason}
+推奨の根拠: ${origin.critiquePath}
+先に行った調査:
+${origin.priorMdPaths.map(p => `- ${p}`).join('\n')}
+先の調査で分かっていることは繰り返さず、推奨の理由に答えることに絞ってください。
+` : ''
+  return `
 あなたは調査担当エージェントです。
 
 ${roleSection('investigator')}
@@ -278,7 +303,7 @@ ${(area.questions || []).map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
 # 全体背景
 ${context || '特に背景情報なし'}
-
+${originSection}
 # 出力
 以下パスに md 保存:
 ${outputPath}
@@ -296,12 +321,56 @@ ${outputPath}
 - 判断に迷ったら決定せず、成果物に明記
 - 最終応答は「調査完了 (${area.name})」の 1 文で良い
 `.trim()
+}
 
-  return svAgent(prompt, 'investigator', `investigate:${area.name}`, { agentType: 'general-purpose', schema: COMPLETION_SCHEMA })
-}))
+function investigateAreas(list, origin) {
+  return parallel(list.map(area => () => svAgent(
+    investigatorPrompt(area, origin),
+    'investigator', `investigate:${area.name}`, { agentType: 'general-purpose', schema: COMPLETION_SCHEMA },
+  )))
+}
+
+const AREA_RECOMMENDATION_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    scope: { type: 'string' },
+    questions: { type: 'array', items: { type: 'string' } },
+    reason: { type: 'string' },
+  },
+  required: ['name', 'scope', 'questions', 'reason'],
+}
+
+const CRITIC_SCHEMA = {
+  type: 'object',
+  properties: {
+    followup_areas: { type: 'array', items: AREA_RECOMMENDATION_SCHEMA },
+    confirmation_areas: { type: 'array', items: AREA_RECOMMENDATION_SCHEMA },
+  },
+  required: ['followup_areas', 'confirmation_areas'],
+}
+
+function triageRecommendations(critique, { usedNames, deepDive, limit }) {
+  const names = new Set(usedNames)
+  const pick = r => ({ name: r.name, scope: r.scope, questions: r.questions, reason: r.reason })
+  const deferredAreas = critique.confirmation_areas.map(r => ({ ...pick(r), deferral: 'needs_user_confirmation' }))
+  const followupAreas = []
+  for (const r of critique.followup_areas) {
+    if (fileNameErrors('name', r.name).length > 0 || names.has(r.name)) { deferredAreas.push({ ...pick(r), deferral: 'invalid_name' }); continue }
+    names.add(r.name)
+    if (!deepDive) { deferredAreas.push({ ...pick(r), deferral: 'deep_dive_disabled' }); continue }
+    if (followupAreas.length >= limit) { deferredAreas.push({ ...pick(r), deferral: 'over_limit' }); continue }
+    followupAreas.push(pick(r))
+  }
+  return { followupAreas, deferredAreas }
+}
+
+phase('調査')
+
+const investigations = await investigateAreas(areas)
 
 const validInvestigations = investigations.filter(r => r != null)
-const areaMdPaths = areas.map((a, i) => ({ area: a.name, mdPath: `${dir}/agents/investigator-${a.name}.md`, succeeded: investigations[i] != null }))
+const originalAreaMdPaths = areas.map((a, i) => ({ area: a.name, mdPath: areaMdPath(a.name), succeeded: investigations[i] != null, followup: false }))
 const failedAreaNames = areas.filter((_, i) => investigations[i] == null).map(a => a.name)
 
 if (validInvestigations.length < areas.length / 2) {
@@ -309,7 +378,7 @@ if (validInvestigations.length < areas.length / 2) {
     status: 'escalation',
     summary: `${failedAreaNames.length}/${areas.length} 領域で調査失敗 (失敗: ${failedAreaNames.join(', ')})`,
     runDir: dir,
-    areaMdPaths,
+    areaMdPaths: originalAreaMdPaths,
     escalation: {
       reason: '調査担当エージェントの過半数が null を返した',
       options: [
@@ -324,9 +393,11 @@ if (validInvestigations.length < areas.length / 2) {
 
 const succeededAreas = areas.filter((_, i) => investigations[i] != null)
 
-// 網羅性チェックは「調査観点として抜けている領域はないか」という開いた問いを投げる。
-// 調査範囲が既に決まっている場合、この問いは範囲を開け直す方向にしか働かないため回さない。
+// 範囲が決まった調査や深掘りの後に網羅性チェックを回すと、範囲を開け直す推奨しか生まない
 let critiquePath = null
+let deferredAreas = null
+let followupAreas = []
+let followupResults = []
 if (runCompletenessCheck) {
   phase('網羅性チェック')
 
@@ -345,11 +416,27 @@ ${failedAreaNames.length ? `
 # 調査に失敗した領域 (SV 把握済み。抜けとして扱わず、追加調査推奨にも挙げない)
 ${failedAreaNames.map(n => `- ${n}`).join('\n')}
 ` : ''}
+# 使用済みの領域名
+${areas.map(a => `- ${a.name}`).join('\n')}
+
 # 全体背景
 ${context || 'なし'}
 
 # 各領域の調査結果 (Read で確認)
-${succeededAreas.map(a => `- ${a.name}: ${dir}/agents/investigator-${a.name}.md`).join('\n')}
+${succeededAreas.map(a => `- ${a.name}: ${areaMdPath(a.name)}`).join('\n')}
+
+# 推奨の分け方
+追加調査の推奨は、次の 2 つに分けてください。迷ったら confirmation_areas に入れます。
+- followup_areas: 調査の目的・全体背景・各領域の調査対象の範囲内で、既存の問いに答えるために読み足すべきもの
+- confirmation_areas: 次のいずれかに当たるもの
+  - 調査の範囲を広げる
+  - 全体背景でユーザが範囲外とした・決めた事柄に触れる
+  - 本番環境・外部サービス・追加の権限が要る
+  - 調査の目的そのものの見直しを含む
+  - 規模が既存の 1 領域分を大きく超える
+
+各推奨には name・scope・questions (1 件以上)・reason を書きます。
+name は成果物のファイル名になります。文字・数字で始め、文字・数字・. _ - だけで書き、使用済みの領域名と重ねないでください。
 
 # 出力
 以下パスに md 保存:
@@ -357,36 +444,60 @@ ${critiquePath}
 
 構成:
 - ## 抜けと判断されたポイント (該当あれば)
-- ## 追加調査推奨 (領域名 + 理由)
+- ## 追加調査推奨: 範囲内
+- ## 追加調査推奨: ユーザ確認が要るもの
 - ## アクセス不能領域の集約 (各領域の結果から)
 - ## 判定 JSON
 
 判定 JSON:
 {
-  "additional_areas_recommended": [{"name": "...", "scope": "...", "reason": "..."}],
+  "followup_areas": [{"name": "...", "scope": "...", "questions": ["..."], "reason": "..."}],
+  "confirmation_areas": [{"name": "...", "scope": "...", "questions": ["..."], "reason": "..."}],
   "access_blocker": {"areas": [...], "reason": "..."} | null
 }
 
 # 制約
 - 合否・重大度・観点チェックはこの wf では使わない。抜けの指摘だけを行う
 - 判定 JSON の access_blocker は、いずれかの領域で「アクセス不能領域」が報告されていれば必ず埋める
+- 判定 JSON の followup_areas・confirmation_areas は、StructuredOutput で返す内容と一致させる。access_blocker は md だけに書く
 - 最終応答は「網羅性チェック完了」の 1 文で良い
 `.trim()
 
-  const critique = await svAgent(critiquePrompt, 'critique', 'completeness-critic', { schema: COMPLETION_SCHEMA })
-  if (critique == null) critiquePath = null
+  const critique = await svAgent(critiquePrompt, 'critique', 'completeness-critic', { schema: CRITIC_SCHEMA })
+  if (critique == null) {
+    critiquePath = null
+  } else {
+    ({ followupAreas, deferredAreas } = triageRecommendations(critique, { usedNames: areas.map(a => a.name), deepDive: runDeepDive, limit: MAX_FOLLOWUP_AREAS }))
+    const overLimit = deferredAreas.filter(d => d.deferral === 'over_limit').length
+    if (overLimit > 0) log(`深掘りの上限 (${MAX_FOLLOWUP_AREAS} 領域) を超えた推奨 ${overLimit} 件は調べずに返す`)
+
+    if (followupAreas.length > 0) {
+      phase('深掘り')
+      followupResults = await investigateAreas(followupAreas, { critiquePath, priorMdPaths: succeededAreas.map(a => areaMdPath(a.name)) })
+    }
+  }
 }
 
-// SV は areaMdPaths と critiquePath を Read して総括する
+const areaMdPaths = [
+  ...originalAreaMdPaths,
+  ...followupAreas.map((a, i) => ({ area: a.name, mdPath: areaMdPath(a.name), succeeded: followupResults[i] != null, followup: true })),
+]
 
 const failedNote = failedAreaNames.length ? ` (失敗: ${failedAreaNames.join(', ')})` : ''
+const failedFollowupNames = followupAreas.filter((_, i) => followupResults[i] == null).map(a => a.name)
+const followupNote = followupAreas.length > 0
+  ? `、深掘り ${followupAreas.length - failedFollowupNames.length}/${followupAreas.length} 領域${failedFollowupNames.length ? ` (失敗: ${failedFollowupNames.join(', ')})` : ''}`
+  : ''
+const confirmationCount = (deferredAreas || []).filter(d => d.deferral === 'needs_user_confirmation').length
+const confirmationNote = confirmationCount > 0 ? `、ユーザ確認が要る推奨 ${confirmationCount} 件` : ''
 
 if (svArgs.checkpoint_declarations && svArgs.checkpoint_declarations.includes('investigated')) {
   return {
     status: 'checkpoint_stop',
-    summary: `調査完了 (${succeededAreas.length}/${areas.length} 領域${failedNote})、ユーザ確認待ち`,
+    summary: `調査完了 (${succeededAreas.length}/${areas.length} 領域${failedNote}${followupNote}${confirmationNote})、ユーザ確認待ち`,
     areaMdPaths,
     critiquePath,
+    deferredAreas,
     checkpoint: {
       name: 'investigated',
       reason: 'ユーザ宣言のチェックポイント',
@@ -396,7 +507,8 @@ if (svArgs.checkpoint_declarations && svArgs.checkpoint_declarations.includes('i
 
 return {
   status: 'success',
-  summary: `${succeededAreas.length}/${areas.length} 領域を調査完了${failedNote}${runCompletenessCheck ? '' : ' (網羅性チェックなし)'}`,
+  summary: `${succeededAreas.length}/${areas.length} 領域を調査完了${failedNote}${followupNote}${confirmationNote}${runCompletenessCheck ? '' : ' (網羅性チェックなし)'}`,
   areaMdPaths,
   critiquePath,
+  deferredAreas,
 }

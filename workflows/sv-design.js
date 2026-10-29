@@ -193,7 +193,7 @@ function stackPackBlock(reader) {
 1. ${KIT_DIR}/stacks/<スタック名>/index.md を Read する
 2. index.md の「読むファイル」の表のうち、読み手が ${reader} の行のファイルを、index.md と同じディレクトリから Read する。条件が付いた行は、条件の目印を対象のプロジェクトで確かめ、当てはまるときだけ読む
 
-パックはロール定義を補う知識です。ロール定義や本プロンプトの指定と食い違うときは、そちらに従ってください。
+パックはロール定義を補う知識です。ロール定義・利用者の追記・本プロンプトの指定と食い違うときは、そちらに従ってください。
 index.md が存在しないスタックは読まずに続け、成果物に「スタックパック未配置: <スタック名>」と書いてください。
 `.trim()
 }
@@ -204,6 +204,12 @@ function roleSection(role, note) {
 # ロール定義 (必読)
 以下ファイルを Read で全文読み、指示を全て守ってください。出力形式は本プロンプトの指定を正とします:
 - ${KIT_DIR}/roles/${role}.md
+
+続けて、利用者の追記を次の順に Read してください。無いのが通常の状態なので、無いファイルは飛ばし、読めなかったことは成果物のどこ (アクセス不能領域を含む) にも書きません:
+1. ${KIT_DIR}/roles/local/_all.md
+2. ${KIT_DIR}/roles/local/${role}.md
+
+追記はロール定義に優先し、2 つが食い違うときは 2 に従ってください。本プロンプトの指定は追記にも優先します。
 `.trim()
   return [head, note, stackPackBlock(role)].filter(Boolean).join('\n\n')
 }
@@ -230,7 +236,7 @@ function mailboxBlock(name) {
   - inbox.md: SV から担当への連絡
   - outbox.md: 担当から SV への連絡
 
-作業を始める前に、inbox.md と outbox.md を Read してください (無いファイルは飛ばす)。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
+作業を始める前に、inbox.md と outbox.md を Read してください。無いのが通常の状態なので、無いファイルは飛ばし、読めなかったことは成果物のどこ (アクセス不能領域を含む) にも書きません。続けて規則 ${KIT_DIR}/workflows/mailbox/rules.md を Read し、従ってください。
 `.trim()
 }
 

@@ -16,6 +16,8 @@ workflow (wf) を組み合わせて案件を進める SV (スーパーバイザ�
 | `settings.snippet.json` | wf が確認なしで動くための許可設定と、連絡帳のフック設定 |
 | `UPDATING.md` | 更新の手順 (配置しない) |
 
+利用者が自分で作るファイル (`sv-mode.local.md`・`roles/local/`) はキットに含まれない。「利用者の追記」を参照。
+
 導入の流れは、配置 → CLAUDE.md への書き足し → 許可設定 → フック設定 → 確認。更新は `UPDATING.md` を参照。
 
 ## 前提
@@ -46,7 +48,7 @@ workflow (wf) を組み合わせて案件を進める SV (スーパーバイザ�
 
 wf・roles・stacks はこのパスを固定で参照するので、配置先は変えない。
 
-役割ファイル名 (designer / implementer / investigator / reviewer / verifier) は一般的なので、先に同名のファイルが無いか確かめる。既にあれば上書きになる。
+役割ファイル名 (designer / implementer / investigator / reviewer / verifier) は一般的なので、先に同名のファイルが無いか確かめる。既にあれば上書きになる。`~/.claude/roles/local/` と `~/.claude/sv-mode.local.md` はキットに含まれないので、配置のコマンドで上書きも削除もされない。
 
 ```sh
 ls ~/.claude/roles ~/.claude/workflows ~/.claude/stacks
@@ -126,7 +128,32 @@ cp sv-mode.md ~/.claude/
   - フックを入れた場合は、wf の実行中に run ディレクトリ (作業ディレクトリの `wf-<wf 名>/<run_id>/`) の `mailbox/<担当名>/status` が更新されることも確かめる
 - 任意: `stacks` を指定して wf を起動し、担当の成果物に「スタックパック未配置」が出ないことを確かめる
 
+## 利用者の追記 (任意)
+
+キットの更新で上書きされない、自分用の規則の置き場。キットのファイルに手を入れる代わりにここに書けば、更新時のマージが要らない。追記ファイルは、キットのリポジトリ (clone) の中ではなく `~/.claude` の下に作る。
+
+### SV のアドオン
+
+- 置き場: `~/.claude/sv-mode.local.md`
+- 書くもの: 自分の環境での SV の振る舞い (通知の手段、wf の使い方、キットより強くしたい規則など)。`sv-mode.md` と食い違う点はアドオンが優先する
+- 手順
+  1. ファイルを作る
+  2. `~/.claude/CLAUDE.md` の `@~/.claude/sv-mode.md` の行の直後に `@~/.claude/sv-mode.local.md` の行を足す (コードブロックの外)
+  3. Claude Code を再起動し、`/memory` に `sv-mode.local.md` が出ることを確かめる
+- 注意: ファイルを作る前に行を足さない。消すときは行を先に消す (取り込み先が無いときの動きは確かめていないため)
+
+### ロールの追記
+
+- `~/.claude/roles/local/_all.md`: ロール定義を読むすべての担当が読む
+- `~/.claude/roles/local/<ロール名>.md`: そのロールの担当だけが読む。ロール名は `roles/` のファイル名 (拡張子なし)。どの担当がどのロール定義を読むかは `stacks/README.md` の「index.md の書き方」節
+- 読む順は、ロール定義、`_all.md`、`<ロール名>.md`、スタックパック。食い違うときは、wf のプロンプトの指定 (出力形式など)、`<ロール名>.md`、`_all.md`、ロール定義、パックの順に優先する
+- commit 担当とセルフチェック確認は読まない
+- 担当は毎回全文を読むので、短く保つ
+- 許可設定は `Read(~/.claude/roles/**)` で足りる (`~/.claude` がシンボリックリンクなら、実際のパスの `roles/**` のルールも要る。「許可設定」参照)
+
+`~/.claude` の下への書き込みは保護されていて、Claude Code に書かせると毎回確認が出る (「許可設定」の注意と同じ)。
+
 ## 更新と取り外し
 
 - 更新: `UPDATING.md` に従う。同じ名前のスタックパックは上書きされる (自分で足すパックは別の名前で置く。詳細は `stacks/README.md`)
-- 取り外し: CLAUDE.md から足した行を消す。`~/.claude/settings.json` に足した許可ルールと hooks の要素を消す。`~/.claude/sv-mode.md`、`~/.claude/workflows/sv-*.js` と関連文書、`~/.claude/roles/` のキット由来のファイル (designer / implementer / investigator / reviewer / verifier)、`~/.claude/stacks/` のキット由来のパックは、中身を確かめてから削除する
+- 取り外し: CLAUDE.md から足した行を消す。`~/.claude/settings.json` に足した許可ルールと hooks の要素を消す。`~/.claude/sv-mode.md`、`~/.claude/workflows/sv-*.js` と関連文書、`~/.claude/roles/` のキット由来のファイル (designer / implementer / investigator / reviewer / verifier)、`~/.claude/stacks/` のキット由来のパックは、中身を確かめてから削除する。利用者の追記 (`sv-mode.local.md` と `roles/local/`) は自分のファイルなので、要らなければ消す。アドオンを消すときは、CLAUDE.md の取り込みの行を先に消す
