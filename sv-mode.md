@@ -146,6 +146,9 @@ wf が `checkpoint_stop` で返ったら、経過を報告して承諾を待つ�
 **`sv-explore-approach`** — 仕様確定前のアプローチ比較
 - 異なる観点 (MVP / リスク / 拡張性など) で並列に案を生成し、独立審査を経た各案の md を返す (比較表は SV が作る)
 
+**`sv-discuss`** — 問い・選択肢を立場を分けて議論させる
+- 論者が互いの発言に反論・譲歩・修正し (順番制か並行ラウンド制)、提示モードは各案の強み・弱み・争点・選ぶ条件を、合意モードは結論とその根拠を、まとめ役がまとめた md で返す。全発言の議事録も返す。合意モードの結論も採るかは SV が決め、前提を覆す結論はユーザに上げる
+
 **`sv-prototype-ui`** — UI プロトタイプ作成
 - 作業ディレクトリに HTML プロトタイプを制作し、UX・整合性をレビュー → 修正ループ
 
@@ -182,6 +185,7 @@ wf が `checkpoint_stop` で返ったら、経過を報告して承諾を待つ�
 | 対話で詰まった深さ | 呼び出し順序 |
 |---|---|
 | 「こういうの作りたい」 (曖昧) | (`sv-explore-approach` で対話補助) → `sv-investigate` → (`sv-prototype-ui`) → `sv-design` → `sv-implement` → `sv-comprehensive-review` |
+| 選択肢・論点は出ているが決めきれない | `sv-discuss` → (決まった深さの行に合流) |
 | 要件確定 | (`sv-prototype-ui`) → `sv-design` → `sv-implement` → `sv-comprehensive-review` |
 | SV 自作の設計あり | `sv-review-plan` → `sv-implement` → `sv-comprehensive-review` |
 | 設計まで合意済み | `sv-implement` → `sv-comprehensive-review` |

@@ -35,12 +35,13 @@ Workflow({
 ## 返り値の path 参照方針
 
 - 各 wf は集約 md を作らず、各エージェントが書いた md への path を返す。SV は返り値中の path 群を Read して総括する
-- 単一 md を返す wf は `outputPath` を返す (`sv-design` / `sv-review-changes` / `sv-review-plan`)
+- 単一 md を返す wf は `outputPath` を返す (`sv-design` / `sv-review-changes` / `sv-review-plan` / `sv-discuss` (まとめ役の判断メモ))
 - 複数 md を返す wf は wf 固有キーで path 配列を返す:
   - `sv-implement`: `componentOutputs: [{name, succeeded, implMdPath, perComponentTestMdPath, error}]` と `postPipelineTestMdPath`、`commitMdPath` (commit_strategy='none'、または commit 担当が null を返したときは null)。コンポーネントの失敗・テスト失敗・テスト未実施・commit 失敗の escalation でも `componentOutputs` を返す。`design_mismatch` のコンポーネントは `implMdPath` の md に乖離の理由がある
   - `sv-comprehensive-review`: 既定 (`optimize_for: 'wall_clock'`) は観点ごとの md を `lensMdPaths: [{lens, mdPath, succeeded}]` で返す (`succeeded: false` はレビュー担当が失敗した観点で、md が無いか不完全。失敗した観点は summary にも出る)。`optimize_for: 'tokens'` のときは単一 agent が全観点を 1 md にまとめ `outputPath` で返す
   - `sv-investigate`: `areaMdPaths: [{area, mdPath, succeeded, followup}]` と `critiquePath`、`deferredAreas: [{name, scope, questions, reason, deferral}]` (`succeeded: false` は調査担当が失敗した領域で、summary にも出る。`followup: true` は深掘りで追加した領域。`critiquePath` と `deferredAreas` は網羅性チェックを回さなかった・クリティックが失敗したときは `null`。`deferredAreas` はこの run で調べなかった推奨で、`deferral` は理由を表す。`needs_user_confirmation` はユーザに確かめてから追加の `sv-investigate` を起動する。`deep_dive_disabled` / `over_limit` / `invalid_name` は SV が追加起動を判断する (`invalid_name` は名前を付け直す))
   - `sv-explore-approach`: `proposalMdPaths: [{perspective, proposalMdPath, judgeMdPath, succeeded}]` (`succeeded: false` は提案の生成に失敗した観点。`judgeMdPath` は提案の生成か審査が失敗した観点では `null`)
+  - `sv-discuss`: `roundMdPaths: [{round, debater, mdPath, succeeded}]` (論者の発言の md。起動した順で、順番制では発言順。round 0 は初めの主張)、`minutesPath` (全発言を全文で並べた議事録。書記が失敗すると `null`)、`stopReason` (`consensus` / `exhausted` / `max_rounds` / `deadline`)、`roundsCompleted` (初めの主張は数えない)、`debaters: [{name, stance, active}]` (`active: false` は初めの主張に失敗して外れた論者)。判断メモは `outputPath`
   - `sv-prototype-ui`: `prototypeDir` と `reviewMdPaths: [...]`
 - 担当エージェントの起動後の escalation では、その時点で存在する成果物の path キー (`outputPath` / `reviewMdPaths` / `prototypeDir` / `lensMdPaths` / `componentOutputs` 等) と `runDir` が返る。args 検証とセルフチェック確認の escalation は成果物が無いため返さない
 - SV はコンテキスト保護のため、必要な path だけを Read する (全部一気に読むと context を圧迫)
@@ -63,6 +64,7 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 | `sv-review-plan` | `verdict` (`NG` / `conditional-pass` は不合格、`pass` が合格) | `upstream_precondition_failed` / `plan_path_unreadable` / `plan_type_mismatch` |
 | `sv-investigate` | 合否なし | クリティックの `access_blocker`、`deferredAreas` の `needs_user_confirmation` |
 | `sv-explore-approach` | 合否なし (3 軸スコア) | 提案担当の `precondition_failed`、提案担当の `constraints_unmet` と審査担当の `substantive` (後者 2 つは情報のみ) |
+| `sv-discuss` | 合否なし (`stopReason`) | 論者の `precondition_failed` (初めの主張)。合意モードで `stopReason` が `consensus` 以外なら、判断メモの結論は暫定 |
 
 判定 JSON の詳細は各 wf の成果物 md と `design-docs/` の各設計書 §3 を正とする。
 
@@ -113,8 +115,8 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 |---|---|---|
 | `investigator` | `sonnet` | `sv-investigate` の調査担当 (深掘りを含む) |
 | `critique` | セッションのモデル | `sv-investigate` の網羅性チェック |
-| `designer` | セッションのモデル | `sv-design` の設計担当、`sv-explore-approach` の提案担当 |
-| `judge` | セッションのモデル | `sv-explore-approach` の審査担当 |
+| `designer` | セッションのモデル | `sv-design` の設計担当、`sv-explore-approach` の提案担当、`sv-discuss` の論者 |
+| `judge` | セッションのモデル | `sv-explore-approach` の審査担当、`sv-discuss` のまとめ役と書記 |
 | `reviewer` | セッションのモデル | `sv-design` / `sv-review-plan` / `sv-review-changes` / `sv-comprehensive-review` のレビュー担当 |
 | `ui_designer` | セッションのモデル | `sv-prototype-ui` のデザイン担当 |
 | `ui_reviewer` | セッションのモデル | `sv-prototype-ui` のレビュー担当 |
@@ -125,7 +127,7 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 
 ### ファイル名になる値
 
-`run_id`・`stacks[]`・`sv-investigate` の `areas[].name`・`sv-explore-approach` の `perspectives[]`・`sv-implement` の `components[].name`・`sv-review-plan` の `prev_run_id` は、成果物のファイル名・パスに使われる。文字・数字で始まり、文字・数字・`.`・`_`・`-` だけで書く。それ以外は `args 構造不足`。
+`run_id`・`stacks[]`・`sv-investigate` の `areas[].name`・`sv-explore-approach` の `perspectives[]`・`sv-discuss` の `stances[].name`・`sv-implement` の `components[].name`・`sv-review-plan` の `prev_run_id` は、成果物のファイル名・パスに使われる。文字・数字で始まり、文字・数字・`.`・`_`・`-` だけで書く。それ以外は `args 構造不足`。
 
 ---
 
@@ -148,6 +150,35 @@ wf ごとの判定の主キーと、SV が見るべきフラグ:
 | `constraints` | array | 任意 | 制約の配列 |
 | `perspectives` | array | 任意 | 案作成の観点。デフォルト `['mvp', 'risk', 'scalability', 'user-experience']` (空配列もデフォルトに戻す。重複は args 構造不足。各要素はファイル名になる値 (上記)) |
 | `background` | string | 任意 | 関連する既存実装・過去の判断 |
+
+### `sv-discuss` — 立場を分けた議論
+
+すでにある問い・選択肢を、立場を分けた論者に議論させる。`sv-explore-approach` が案を出すのに対し、こちらは論者が互いの発言を読んで反論・譲歩・修正する。決めるのは SV とユーザ。
+
+| キー | 型 | 必須 | 説明 |
+|---|---|---|---|
+| `question` | string | ○ | 議論する問い |
+| `options` | array | 任意 | 選択肢の文字列の配列。空配列は省略と同じ |
+| `stances` | array | 任意 | 論者の立場 `[{ name, position }]` (どちらも必須。name は重複不可でファイル名になる値 (上記)) |
+| `mode` | enum | ○ | `'present'` (判断材料を並べ、結論は出さない) \| `'consensus'` (結論まで詰める)。既定は無く、省略は args 構造不足 |
+| `format` | enum | 任意 | `'sequential'` (既定。論者が 1 人ずつ順に、直前までの発言を読んで書く。所要時間は人数に比例して延びる) \| `'parallel'` (並行ラウンド制。ラウンド内の論者は並行して書き、反論は次のラウンドで行う) |
+| `max_rounds` | number | 任意 | 議論のラウンドの上限 (初めの主張は数えない)。既定値と上限は wf の定数。超えると args 構造不足 |
+| `deadline_epoch_sec` | number | 任意 | 締め切りの UNIX 時刻 (秒)。ラウンドの区切りで判定し、過ぎていれば次のラウンドに入らずまとめに移る (ラウンドの途中では切らないため、最大で 1 ラウンド分超える) |
+| `context` | string | 任意 | 論者全員に共通の背景・材料 (md のパスを含めてよい) |
+| `speech_rules` | string | 任意 | 論者全員に守らせる発言の形式・縛り。まとめ役にも伝わる |
+
+- 論者の決まり方
+  - `stances` があればその数・その順。数の範囲は wf の定数で、外れると args 構造不足。`options` も渡せば全員に共通の材料になる
+  - `stances` が無く `options` があれば、選択肢ごとに擁護者を 1 人。選択肢が少ないときは批判役を 1 人足す。数が論者の上限を超える `options` は args 構造不足 (`stances` で絞るか選択肢を減らす)
+  - どちらも無ければ、案を出す論者を複数人
+- 打ち切りは周の区切りで判定する。合意 (合意モードのみ)・出尽くし・ラウンドの上限・時間の上限のうち最初に当たったものが `stopReason` になる
+- 合意モードで `consensus` 以外のとき、判断メモは「未合意」の構成で、暫定の結論を含む
+- 締め切りの求め方 (コピーして使う):
+
+```sh
+date -v+30M +%s   # macOS
+date -d '+30 min' +%s   # GNU
+```
 
 ### `sv-prototype-ui` — HTML プロトタイプ制作
 
@@ -231,7 +262,7 @@ wf の実行中に、SV と担当がファイル経由で連絡を取り合う�
 - `<run ディレクトリ>/mailbox/<担当名>/` に `inbox.md` (SV → 担当) と `outbox.md` (担当 → SV) を置く。どちらも追記だけ
 - 担当名は wf の label の `:` を `-` に置き換えたもの。修正ループの担当 (設計・レビュー) はラウンドをまたいで `design` / `review` の同じフォルダを使う。SV が途中で送った方針の変更が次のラウンドの担当にも届く
 - フックありの場合、担当が動き出すとフォルダができ、`status` (担当の状態) もここに置かれる。フックなしの場合は、担当が outbox を書くときに作る (`mailbox/rules.md`)
-- `selfcheck-gate` の担当は連絡帳を持たない
+- `selfcheck-gate` の担当と、`sv-discuss` の論者・書記は連絡帳を持たない
 
 ### SV の書き方
 

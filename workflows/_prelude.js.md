@@ -473,7 +473,7 @@ performed と、判定理由 (1〜2 文) を返す
 
 | wf | core | review-checks | diff-review-helpers | diff-review-prompt | selfcheck-gate |
 |---|---|---|---|---|---|
-| sv-investigate / sv-explore-approach / sv-implement | ○ | | | | |
+| sv-investigate / sv-explore-approach / sv-implement / sv-discuss | ○ | | | | |
 | sv-prototype-ui / sv-design | ○ | ○ | | | |
 | sv-review-plan | ○ | ○ | | | ○ |
 | sv-comprehensive-review | ○ | ○ | ○ | | ○ |

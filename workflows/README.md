@@ -50,6 +50,7 @@ SV モードは、以下の課題を **決定的なスクリプト** に落と�
 |---|---|
 | `sv-investigate` | 曖昧な要望・特定領域の状態把握 (並列 fan-out、任意で 1 回の深掘り) |
 | `sv-explore-approach` | 仕様確定前のアプローチ比較 (Judge panel) |
+| `sv-discuss` | 立場を分けた論者の議論で判断材料か結論を出す (提示 / 合意モード、順番制 / 並行ラウンド制) |
 | `sv-prototype-ui` | HTML プロトタイプ制作 + デザインレビュー |
 | `sv-design` | 要件から設計 + 独立レビュー + 修正ループ |
 | `sv-implement` | 設計から依存順のバッチ単位で並列実装 + テスト + commit (レビューは後段の sv-comprehensive-review) |

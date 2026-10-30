@@ -55,6 +55,31 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
 
 新しい版を上に並べる。
 
+### 1.3.0
+
+立場を分けた論者に議論させる wf `sv-discuss` の追加。
+
+- 増えたファイル (そのままコピー)
+  - `workflows/sv-discuss.js`
+  - `workflows/design-docs/sv-discuss.md`
+- 変わったファイル (手を入れていればマージ)
+  - `workflows/USAGE.md`・`workflows/README.md`: sv-discuss の引数・返り値と一覧
+  - `workflows/check-prelude.sh`: sv-discuss の持つブロック
+  - `workflows/_prelude.js.md`: 使用方法の表
+  - `workflows/design-docs/_common.md`: ファイル名になる値・担当の表・設計判断ほか
+  - `sv-mode.md`: wf カタログと呼び出し順
+  - `workflows/VERSION`
+- 無くなったファイル: なし
+- 配置しない文書の変更
+  - `README.md`: 用途の一覧
+  - `UPDATING.md`: 1.3.0 の項
+- 配置しないその他のファイルの変更
+  - `settings.snippet.json`: `Workflow(sv-discuss)`
+- 設定
+  - `settings.json` の `permissions.allow` に `Workflow(sv-discuss)` を足す。手順は `INSTALL.md` の「許可設定」
+  - `CLAUDE.md` への追加はない
+- roles は変わらない
+
 ### 1.2.2
 
 担当が連絡帳を Bash やシェル変数で読んでも、フックが担当と連絡帳を結び付け、新着が担当に届くようにする。

@@ -10,7 +10,7 @@ all_blocks="core review-checks diff-review-helpers diff-review-prompt selfcheck-
 # wf ごとに持つべきブロック
 blocks_for() {
   case "$1" in
-    sv-investigate|sv-explore-approach|sv-implement) echo "core" ;;
+    sv-investigate|sv-explore-approach|sv-implement|sv-discuss) echo "core" ;;
     sv-prototype-ui|sv-design) echo "core review-checks" ;;
     sv-review-plan) echo "core review-checks selfcheck-gate" ;;
     sv-comprehensive-review) echo "core review-checks diff-review-helpers selfcheck-gate" ;;

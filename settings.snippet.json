@@ -3,6 +3,7 @@
     "allow": [
       "Workflow(sv-investigate)",
       "Workflow(sv-explore-approach)",
+      "Workflow(sv-discuss)",
       "Workflow(sv-prototype-ui)",
       "Workflow(sv-design)",
       "Workflow(sv-implement)",
