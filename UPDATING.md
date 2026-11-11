@@ -55,6 +55,21 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
 
 新しい版を上に並べる。
 
+### 1.3.1
+
+担当が、自分で起動した処理の終わりを待つループから抜けられなくなるのを防ぐ。
+
+- 増えたファイル: なし
+- 変わったファイル (手を入れていればマージ)
+  - `roles/designer.md`・`roles/implementer.md`・`roles/investigator.md`・`roles/reviewer.md`・`roles/verifier.md`: 処理の終わりは前景か pid で待ち、`pgrep -f` で待たない
+  - `workflows/VERSION`
+- 無くなったファイル: なし
+- 配置しない文書の変更
+  - `UPDATING.md`: 1.3.1 の項
+- 設定
+  - `settings.json` への追加はない
+  - `CLAUDE.md` への追加はない
+
 ### 1.3.0
 
 立場を分けた論者に議論させる wf `sv-discuss` の追加。
