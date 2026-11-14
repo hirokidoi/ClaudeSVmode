@@ -8,7 +8,7 @@ workflow (wf) を組み合わせて案件を進める SV (スーパーバイザ�
 
 | ファイル | 役割 |
 |---|---|
-| `sv-mode.md` | SV モードの進め方 (導入先の CLAUDE.md から取り込む) |
+| `sv-mode.md` | SV モードの進め方 (導入先の CLAUDE.md の指示で SV が読む) |
 | `CLAUDE.snippet.md` | 導入先の CLAUDE.md に足す行 |
 | `workflows/` | wf 本体と、その使い方の文書 |
 | `roles/` | wf 内のエージェントが読む役割定義 |
@@ -72,13 +72,12 @@ cp sv-mode.md ~/.claude/
 
 ## CLAUDE.md への書き足し
 
-- `CLAUDE.snippet.md` の内容を `~/.claude/CLAUDE.md` の末尾に足す (無ければ作る)。コードブロックの中には入れない (コードブロック内の `@` は取り込まれない)
+- `CLAUDE.snippet.md` の内容を `~/.claude/CLAUDE.md` の末尾に足す (無ければ作る)
 - 足した後に、既存のルールと食い違いが無いかを確かめる。特に見る点は次のとおり。食い違う場合は、どちらを優先するかを CLAUDE.md に書く
   - サブエージェントの使い方 (SV モード中は Agent ツールで本筋を直接任せない)
   - 変更後のレビュー (SV モード中は必須)
   - 承諾の取り方
   - 作業ファイルの置き場
-- 取り込まれたかは `/memory` で確かめられる (`sv-mode.md` が一覧に出る)
 
 ## 許可設定
 
@@ -89,6 +88,7 @@ cp sv-mode.md ~/.claude/
 | `Workflow(sv-...)` | wf の起動 (wf ごとに 1 行) |
 | `Read(~/.claude/roles/**)` / `Read(~/.claude/workflows/**)` | エージェントによる役割定義と使い方の読み取り |
 | `Read(~/.claude/stacks/**)` | エージェントによるスタックパックの読み取り |
+| `Read(~/.claude/sv-mode.md)` / `Read(~/.claude/sv-mode.local.md)` | SV による進め方とアドオンの読み取り |
 | `Edit(tmp/**)` | プロジェクトの `tmp/` (Claude Code を起動したディレクトリ基点) への成果物の書き込み |
 | `Edit(~/tmp/wf-runs/**)` | プロジェクトに `tmp/` が無いときの成果物の置き場 |
 | `Bash(git rev-parse *)` / `Bash(git diff *)` / `Bash(git status *)` | レビュー系 wf による差分の取得 |
@@ -123,8 +123,8 @@ cp sv-mode.md ~/.claude/
 ## 確認
 
 - `sh ~/.claude/workflows/mailbox/test-hook.sh` が `OK` で終わること (jq が無い環境では飛ばす)
-- Claude Code を再起動し、`/` の補完に `sv-investigate` などが出ること、`/memory` に `sv-mode.md` が出ることを確かめる
-- 試運転: 小さなプロジェクトで「この中の X について調べたい」と頼み、SV モードの提案 → 承諾 → `sv-investigate` の起動 → 作業ディレクトリに成果物ができる、まで通ることを確かめる。途中で出た許可の確認は、許可設定に足すか判断する
+- Claude Code を再起動し、`/` の補完に `sv-investigate` などが出ることを確かめる
+- 試運転: 小さなプロジェクトで「この中の X について調べたい」と頼み、SV が `sv-mode.md` を読む → SV モードの提案 → 承諾 → `sv-investigate` の起動 → 作業ディレクトリに成果物ができる、まで通ることを確かめる。途中で出た許可の確認は、許可設定に足すか判断する
   - フックを入れた場合は、wf の実行中に run ディレクトリ (作業ディレクトリの `wf-<wf 名>/<run_id>/`) の `mailbox/<担当名>/status` が更新されることも確かめる
 - 任意: `stacks` を指定して wf を起動し、担当の成果物に「スタックパック未配置」が出ないことを確かめる
 
@@ -136,11 +136,7 @@ cp sv-mode.md ~/.claude/
 
 - 置き場: `~/.claude/sv-mode.local.md`
 - 書くもの: 自分の環境での SV の振る舞い (通知の手段、wf の使い方、キットより強くしたい規則など)。`sv-mode.md` と食い違う点はアドオンが優先する
-- 手順
-  1. ファイルを作る
-  2. `~/.claude/CLAUDE.md` の `@~/.claude/sv-mode.md` の行の直後に `@~/.claude/sv-mode.local.md` の行を足す (コードブロックの外)
-  3. Claude Code を再起動し、`/memory` に `sv-mode.local.md` が出ることを確かめる
-- 注意: ファイルを作る前に行を足さない。消すときは行を先に消す (取り込み先が無いときの動きは確かめていないため)
+- 手順: ファイルを作るだけ。CLAUDE.md に足した snippet が、あれば読むよう SV に指示している
 
 ### ロールの追記
 
@@ -156,4 +152,4 @@ cp sv-mode.md ~/.claude/
 ## 更新と取り外し
 
 - 更新: `UPDATING.md` に従う。同じ名前のスタックパックは上書きされる (自分で足すパックは別の名前で置く。詳細は `stacks/README.md`)
-- 取り外し: CLAUDE.md から足した行を消す。`~/.claude/settings.json` に足した許可ルールと hooks の要素を消す。`~/.claude/sv-mode.md`、`~/.claude/workflows/sv-*.js` と関連文書、`~/.claude/roles/` のキット由来のファイル (designer / implementer / investigator / reviewer / verifier)、`~/.claude/stacks/` のキット由来のパックは、中身を確かめてから削除する。利用者の追記 (`sv-mode.local.md` と `roles/local/`) は自分のファイルなので、要らなければ消す。アドオンを消すときは、CLAUDE.md の取り込みの行を先に消す
+- 取り外し: CLAUDE.md から足した行を消す。`~/.claude/settings.json` に足した許可ルールと hooks の要素を消す。`~/.claude/sv-mode.md`、`~/.claude/workflows/sv-*.js` と関連文書、`~/.claude/roles/` のキット由来のファイル (designer / implementer / investigator / reviewer / verifier)、`~/.claude/stacks/` のキット由来のパックは、中身を確かめてから削除する。利用者の追記 (`sv-mode.local.md` と `roles/local/`) は自分のファイルなので、要らなければ消す

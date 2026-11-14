@@ -16,7 +16,7 @@ cat ~/.claude/workflows/VERSION
 
 ### 手を入れていない場合
 
-`INSTALL.md` の「配置」と同じコマンドで上書きする。そのあと、下の「版ごとの変更」のうち、手元の版より新しく、新しい版までのすべての版について、「無くなったファイル」の項にあるものを `~/.claude` から消し、「設定」の項を `~/.claude/settings.json` と `~/.claude/CLAUDE.md` に足す。
+`INSTALL.md` の「配置」と同じコマンドで上書きする。そのあと、下の「版ごとの変更」のうち、手元の版より新しく、新しい版までのすべての版について、「無くなったファイル」の項にあるものを `~/.claude` から消し、「設定」の項を `~/.claude/settings.json` と `~/.claude/CLAUDE.md` に足す。古い版の項から順に当て、項に置き換えの指示があれば、足さずにその指示どおり置き換える。
 
 ### 手を入れている場合
 
@@ -35,8 +35,9 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
    旧版と新版のファイルは git show v<版>:<パス> で一時ファイルに取り出し、マージの結果は確かめてから手元のファイルに書き戻します。
    衝突があれば私に見せて決めてもらい、私の変更を残す側に倒してください。
    新版で無くなったファイルは、手元のファイルが旧版と同じなら消し、違っていれば消さずに私に見せてください。
-4. UPDATING.md の「版ごとの変更」のうち、v<手元の版> より新しく v<新しい版> までのすべての版の「設定」の項を見て、~/.claude/settings.json と ~/.claude/CLAUDE.md に足してください。
+4. UPDATING.md の「版ごとの変更」のうち、v<手元の版> より新しく v<新しい版> までのすべての版の「設定」の項を、古い版から順に見て、~/.claude/settings.json と ~/.claude/CLAUDE.md に足してください。
    足し方は INSTALL.md の「CLAUDE.md への書き足し」「許可設定」「フック設定」に従い、既存の内容は消さないでください。
+   ただし項に置き換えの指示があるものは、足さずにその指示どおり置き換え、置き換える前後を私に見せてください。
 5. 終わったら bash ~/.claude/workflows/check-prelude.sh と sh ~/.claude/workflows/mailbox/test-hook.sh を実行してください (後者は 1.1.0 以降で、jq が無い環境では飛ばす)。
 ```
 
@@ -54,6 +55,27 @@ Claude Code に頼む。キットのリポジトリ (`git clone` したもの) �
 ## 版ごとの変更
 
 新しい版を上に並べる。
+
+### 1.3.2
+
+`sv-mode.md` とアドオンを CLAUDE.md の `@` で取り込むのをやめ、SV が必要なときに Read する。SV モードを使わない会話の毎リクエストと、wf の担当の文脈に全文が載らないようにする。
+
+- 増えたファイル: なし
+- 変わったファイル (手を入れていればマージ)
+  - `sv-mode.md`: 「適用範囲」のアドオンと担当の項を、取り込みを前提にしない書き方に
+  - `workflows/design-docs/_common.md`: 利用者のアドオンと追記の設計判断
+  - `workflows/VERSION`
+- 無くなったファイル: なし
+- 配置しない文書の変更
+  - `INSTALL.md`: 配置の表・CLAUDE.md への書き足し・許可設定・確認・利用者の追記・取り外し
+  - `UPDATING.md`: 1.3.2 の項と、設定を当てる順序と置き換えの扱い
+- 配置しないその他のファイルの変更
+  - `CLAUDE.snippet.md`: 取り込みの行をやめ、Read する指示に
+  - `settings.snippet.json`: `Read(~/.claude/sv-mode.md)`・`Read(~/.claude/sv-mode.local.md)`
+- 設定
+  - `settings.json` の `permissions.allow` に `Read(~/.claude/sv-mode.md)` と `Read(~/.claude/sv-mode.local.md)` を足す。手順は `INSTALL.md` の「許可設定」(`~/.claude` がシンボリックリンクなら実際のパスのルールも要る)
+  - `CLAUDE.md` は置き換える: SV モードの節 (snippet で足した見出しと本文) と、`@~/.claude/sv-mode.md`・`@~/.claude/sv-mode.local.md` の行を消し、新しい `CLAUDE.snippet.md` の内容を置く。節の中に自分で書き足した文は残す
+- roles は変わらない
 
 ### 1.3.1
 

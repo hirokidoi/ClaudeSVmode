@@ -13,6 +13,8 @@
       "Read(~/.claude/roles/**)",
       "Read(~/.claude/workflows/**)",
       "Read(~/.claude/stacks/**)",
+      "Read(~/.claude/sv-mode.md)",
+      "Read(~/.claude/sv-mode.local.md)",
       "Edit(tmp/**)",
       "Edit(~/tmp/wf-runs/**)",
       "Bash(git rev-parse *)",
